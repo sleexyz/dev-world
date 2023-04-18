@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"crypto/md5"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -10,15 +10,14 @@ import (
 	"net/http/httputil"
 	"os"
 	"os/exec"
-	"strconv"
 	"sync"
 	"time"
 )
 
 type Workspace struct {
-	pathHash string
-	port     string
-	process  *os.Process
+	pathHash         string
+	vscodeSocketPath string
+	process          *os.Process
 }
 
 var (
@@ -28,36 +27,39 @@ var (
 )
 
 func (workspace *Workspace) reverseProxy(w http.ResponseWriter, r *http.Request) {
+	transport := &http.Transport{
+		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return net.Dial("unix", workspace.vscodeSocketPath)
+		},
+	}
+
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = "http"
-			req.URL.Host = fmt.Sprintf("localhost:%s", workspace.port)
-			req.Host = r.Host
+			req.URL.Host = r.Host
 		},
+		Transport: transport,
 	}
 	proxy.ServeHTTP(w, r)
 }
 
-func (workspace *Workspace) waitForHealthCheck() error {
-	url := fmt.Sprintf("http://localhost:%s/healthz", workspace.port)
-	maxBackoff := time.Second * 5
+func (workspace *Workspace) waitForSocket(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	backoff := time.Millisecond * 100
 	for {
-		resp, err := http.Get(url)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			var data struct{ Alive bool }
-			err = json.NewDecoder(resp.Body).Decode(&data)
-			resp.Body.Close()
-			if err == nil && data.Alive {
-				fmt.Println("Server is alive!")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			conn, err := net.Dial("unix", workspace.vscodeSocketPath)
+			if err == nil {
+				conn.Close()
 				return nil
 			}
-		}
-		fmt.Println("Server is not alive, waiting...")
-		time.Sleep(backoff)
-		backoff *= 2
-		if backoff > maxBackoff {
-			return fmt.Errorf("timeout reached, server is not responding")
+			fmt.Println("Server is not alive, waiting...")
+			time.Sleep(backoff)
+			backoff *= 2
 		}
 	}
 }
@@ -71,44 +73,47 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		pathHash := cookie.Value
-		workspace := getWorkspace(pathHash)
+		workspace := getWorkspace(r.Context(), pathHash)
 		workspace.reverseProxy(w, r)
 		return
 	}
 
 	pathHash := fmt.Sprintf("%x", md5.Sum([]byte(folder)))
-	workspace := getWorkspace(pathHash)
+	workspace := getWorkspace(r.Context(), pathHash)
 
 	cookie := http.Cookie{Name: "pathHash", Value: workspace.pathHash, Path: "/"}
 	http.SetCookie(w, &cookie)
 	workspace.reverseProxy(w, r)
 }
 
-func findPort() string {
-	ln, err := net.Listen("tcp", ":0")
-	if err != nil {
-		log.Fatalf("Failed to listen on a random port: %v", err)
-	}
-	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-	ln.Close()
-	return port
-}
-
 // getWorkspace returns a workspace for the given path hash. If the workspace
 // doesn't exist, it will be created.
-func getWorkspace(pathHash string) *Workspace {
+func getWorkspace(ctx context.Context, pathHash string) *Workspace {
 	workspaceMapMu.Lock()
 	defer workspaceMapMu.Unlock()
 
 	if workspace, ok := workspaceMap[pathHash]; ok {
 		return workspace
 	}
+	return createWorkspace(ctx, pathHash)
+}
 
-	// Find an available port
-	port := findPort()
+func createWorkspace(ctx context.Context, pathHash string) *Workspace {
+	vscodeSocketPath := fmt.Sprintf("/tmp/vscode-%s.sock", pathHash)
+	if _, err := os.Stat(vscodeSocketPath); err == nil {
+		err = os.Remove(vscodeSocketPath)
+		if err != nil {
+			log.Fatalln("Error removing existing socket:", err)
+		}
+	}
+
+	_, err := os.Create(vscodeSocketPath)
+	if err != nil {
+		log.Fatalln("Error creating socket:", err)
+	}
 
 	// Start a new child process for the folder
-	cmd := exec.Command("code-server", "--port", port, pathHash)
+	cmd := exec.Command("code-server", "--socket", vscodeSocketPath, pathHash)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
@@ -116,9 +121,9 @@ func getWorkspace(pathHash string) *Workspace {
 	}
 
 	workspace := &Workspace{
-		pathHash: pathHash,
-		port:     port,
-		process:  cmd.Process,
+		pathHash:         pathHash,
+		vscodeSocketPath: vscodeSocketPath,
+		process:          cmd.Process,
 	}
 
 	// Add the workspace to the map
@@ -132,7 +137,7 @@ func getWorkspace(pathHash string) *Workspace {
 		}
 	}()
 
-	workspace.waitForHealthCheck()
+	workspace.waitForSocket(ctx)
 
 	return workspaceMap[pathHash]
 }
