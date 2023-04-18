@@ -137,7 +137,10 @@ func createWorkspace(ctx context.Context, pathHash string) *Workspace {
 		}
 	}()
 
-	workspace.waitForSocket(ctx)
+	err = workspace.waitForSocket(ctx)
+	if err != nil {
+		log.Printf("Failed health check for child process: %v", err)
+	}
 
 	return workspaceMap[pathHash]
 }
