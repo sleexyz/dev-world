@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var logger = log.New(os.Stdout, "", 0)
+var logger = log.New(os.Stdout, "", log.LstdFlags)
 
 type State struct {
 	shouldUpdateChan chan struct{}
@@ -17,7 +17,7 @@ type State struct {
 }
 
 func main() {
-	logger.SetPrefix("\033[33m[dev] \033[0m") // yellow
+	logger.SetPrefix("\033[33m[updater] \033[0m") // yellow
 	state := &State{
 		shouldUpdateChan: make(chan struct{}),
 		lastSampleTime:   time.Now(),
@@ -35,7 +35,7 @@ func main() {
 // Continuously run the program.
 func runProgram(state *State) {
 	for {
-		cmd := exec.Command("sh", "-c", "./serve")
+		cmd := exec.Command("bin/serve")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		logger.Println("Starting process.")
@@ -71,13 +71,13 @@ func runProgram(state *State) {
 func runUpdater(shouldUpdateChan chan struct{}) {
 	for {
 		logger.Println("Running updater")
-		cmd := exec.Command("sh", "-c", "cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -d -p -r -s -z -c 'go build ./pkg/serve'")
+		cmd := exec.Command("sh", "-c", "cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -p -r -s -z -c './build.sh'")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
-		// Don't kill the process if `go build`` exited with a non-zero exit code
+		// Don't kill the process if build command exited with a non-zero exit code
 		if err != nil {
-			logger.Printf("Failed to run `go build`: %s\n", err)
+			logger.Printf("Failed to build`: %s\n", err)
 			continue
 		}
 		shouldUpdateChan <- struct{}{}

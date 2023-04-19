@@ -6,5 +6,11 @@ Prerequisites
 Start:
 
 ```
-go run pkg/dev/dev.go
+start.sh
+```
+
+Install (mac only):
+
+```
+install.sh
 ```
