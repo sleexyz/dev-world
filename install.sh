@@ -19,6 +19,9 @@ plist_content=$(cat << EOF
     <string>/run/current-system/sw/bin/nix</string>
     <string>develop</string>
     <string>--command</string>
+    <string>/bin/zsh</string>
+    <string>-l</string>
+    <string>-c</string>
     <string>./start.sh</string>
   </array>
 
