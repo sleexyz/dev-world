@@ -16,13 +16,10 @@ plist_content=$(cat << EOF
 
   <key>ProgramArguments</key>
   <array>
-    <string>/run/current-system/sw/bin/nix</string>
-    <string>develop</string>
-    <string>--command</string>
     <string>/bin/zsh</string>
-    <string>-l</string>
     <string>-c</string>
-    <string>./start.sh</string>
+    <string>-l</string>
+    <string>go run ./updater</string>
   </array>
 
   <key>StandardErrorPath</key>
@@ -41,9 +38,14 @@ plist_content=$(cat << EOF
 EOF)
 
 mkdir -p ~/Library/LaunchAgents
-launchctl stop dev-world
-launchctl unload -w ~/Library/LaunchAgents/dev-world.plist
+
+./uninstall.sh
+
 echo "$plist_content" > ~/Library/LaunchAgents/dev-world.plist
 launchctl load -w ~/Library/LaunchAgents/dev-world.plist
 launchctl start dev-world
+
 echo 'Successfully installed dev-world. Visit http://localhost:12345'
+
+trap 'echo "Caught SIGINT, exiting tail_logs.sh. Run uninstall.sh to uninstall."; exit 0' SIGINT
+./tail_logs.sh
