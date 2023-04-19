@@ -20,21 +20,47 @@ type Workspace struct {
 	Process    *os.Process
 }
 
-func (workspace *Workspace) ReverseProxy(w http.ResponseWriter, r *http.Request) {
+func (workspace *Workspace) Folder() string {
+	folder, err := base64.StdEncoding.DecodeString(workspace.Key)
+	if err != nil {
+		panic(err)
+	}
+	return string(folder)
+}
+
+func (workspace *Workspace) ReverseProxy(w http.ResponseWriter, r *http.Request) error {
 	transport := &http.Transport{
 		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 			return net.Dial("unix", workspace.SocketPath)
 		},
 	}
 
+	errorChan := make(chan error, 1)
+	doneChan := make(chan struct{})
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = "http"
 			req.URL.Host = r.Host
 		},
 		Transport: transport,
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			if err != nil {
+				errorChan <- err
+			}
+		},
 	}
-	proxy.ServeHTTP(w, r)
+
+	go func() {
+		proxy.ServeHTTP(w, r)
+		doneChan <- struct{}{}
+	}()
+
+	select {
+	case <-doneChan:
+		return nil
+	case err := <-errorChan:
+		return err
+	}
 }
 
 func (workspace *Workspace) WaitForSocket(ctx context.Context) error {
@@ -51,11 +77,16 @@ func (workspace *Workspace) WaitForSocket(ctx context.Context) error {
 				conn.Close()
 				return nil
 			}
-			fmt.Println("Server is not alive, waiting...")
+			log.Println("Server is not alive, waiting...")
 			time.Sleep(backoff)
 			backoff *= 2
 		}
 	}
+}
+
+func (workspace *Workspace) Close() {
+	workspace.Process.Kill()
+	os.Remove(workspace.SocketPath)
 }
 
 func CreateKeyFromFolder(folder string) string {

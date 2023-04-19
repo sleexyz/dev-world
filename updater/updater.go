@@ -71,7 +71,12 @@ func runProgram(state *State) {
 func runUpdater(shouldUpdateChan chan struct{}) {
 	for {
 		logger.Println("Running updater")
-		cmd := exec.Command("sh", "-c", "cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -p -r -s -z -c './build.sh'")
+		cmd := exec.Command(
+			"zsh",
+			"-c",
+			"-l",
+			"cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -p -r -s -z -c './build.sh'",
+		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()

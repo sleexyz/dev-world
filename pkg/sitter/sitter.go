@@ -3,8 +3,10 @@ package sitter
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 
@@ -29,7 +31,27 @@ func (s *Sitter) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	ws.ReverseProxy(w, r)
+
+	err = ws.ReverseProxy(w, r)
+	if err != nil {
+		var netOpError *net.OpError
+		if ok := errors.As(err, &netOpError); ok {
+			if netOpError.Op == "dial" {
+				log.Printf("Restarting workspace %s\n", ws.Key)
+				s.deleteWorkspace(ws)
+				err = ws.ReverseProxy(w, r)
+				if err != nil {
+					log.Printf("Error proxying request: %s\n", err)
+					http.Error(w, "Error proxying request", http.StatusInternalServerError)
+					return
+				}
+			}
+		} else {
+			log.Printf("Error proxying request: %s\n", err)
+			http.Error(w, "Error proxying request", http.StatusInternalServerError)
+			return
+		}
+	}
 }
 
 func (s *Sitter) GetWorkspaceForRequest(w http.ResponseWriter, r *http.Request) (*workspace.Workspace, error) {
@@ -84,5 +106,13 @@ func (sitter *Sitter) addWorkspace(workspace *workspace.Workspace) {
 	sitter.workspaceMapMu.Lock()
 	defer sitter.workspaceMapMu.Unlock()
 	sitter.workspaceMap[workspace.Key] = workspace
-	log.Printf("Added workspace: %s \n", workspace.Key)
+	log.Printf("Added workspace: %s \n", workspace.Folder())
+}
+
+func (sitter *Sitter) deleteWorkspace(workspace *workspace.Workspace) {
+	sitter.workspaceMapMu.Lock()
+	defer sitter.workspaceMapMu.Unlock()
+	workspace.Close()
+	delete(sitter.workspaceMap, workspace.Key)
+	log.Printf("Deleted workspace: %s \n", workspace.Folder())
 }

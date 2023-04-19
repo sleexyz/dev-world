@@ -58,11 +58,11 @@ func (s *Sitter) reconnectToWorkspace(ctx context.Context, folder string) (*work
 		if err := os.Remove(codeServerSocketPath); err != nil {
 			log.Fatalf("Failed to remove existing socket: %v", err)
 		}
+		log.Printf("Removed stale socket at %s\n", folder)
 		return nil, err
 	}
 
 	// If the socket already exists, try to reconnect to it
-	log.Printf("Reconnecting to existing socket at %s\n", folder)
 	workspace := &workspace.Workspace{
 		Key:        key,
 		SocketPath: codeServerSocketPath,
@@ -72,6 +72,7 @@ func (s *Sitter) reconnectToWorkspace(ctx context.Context, folder string) (*work
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("Reconnecting to existing socket for %s\n", folder)
 	return workspace, nil
 }
 
