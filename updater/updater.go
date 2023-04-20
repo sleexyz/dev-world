@@ -75,7 +75,7 @@ func runUpdater(shouldUpdateChan chan struct{}) {
 			"zsh",
 			"-c",
 			"-l",
-			"cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -p -r -s -z -c './build.sh'",
+			"cat <(git ls-files) <(git ls-files --others --exclude-standard) | grep pkg | entr -n -d -p -r -s -z -c './build.sh'",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
