@@ -1,0 +1,19 @@
+{
+  "name": "dev-world",
+  "description": "Develop everywhere",
+  "version": "1.0",
+  "manifest_version": 3,
+  "permissions": ["activeTab"],
+  "devtools_page": "main.html",
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "MacCtrl+Shift+P"
+      },
+      "description": "Open dev-world on the current page."
+    }
+  }
+}
