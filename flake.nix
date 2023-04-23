@@ -14,6 +14,7 @@
             nativeBuildInputs = with pkgs; [
               go
               entr
+              nodejs-18_x
             ];
           };
         }
