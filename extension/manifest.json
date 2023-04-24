@@ -4,10 +4,12 @@
   "version": "1.0",
   "manifest_version": 3,
   "permissions": ["activeTab"],
-  "devtools_page": "main.html",
+  "devtools_page": "devtools_page.html",
   "action": {},
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background.ts",
+    "type": "module"
+
   },
   "host_permissions": ["*://*/*"],
   "commands": {

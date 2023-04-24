@@ -2,7 +2,6 @@ package sitter
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -11,6 +10,10 @@ import (
 	"sync"
 
 	"github.com/sleexyz/dev-world/pkg/workspace"
+)
+
+const (
+	WORKSPACE_PATH_COOKIE = "workspace-path"
 )
 
 type Sitter struct {
@@ -25,6 +28,16 @@ func CreateNewSitter() *Sitter {
 	}
 }
 
+func (s *Sitter) GetWorkspaces() []string {
+	s.workspaceMapMu.Lock()
+	defer s.workspaceMapMu.Unlock()
+	ws := make([]string, 0, len(s.workspaceMap))
+	for k := range s.workspaceMap {
+		ws = append(ws, s.workspaceMap[k].Path)
+	}
+	return ws
+}
+
 func (s *Sitter) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// log.Printf("Proxying request: %s\n", r.URL.Path)
 	ws, err := s.GetWorkspaceForRequest(w, r)
@@ -37,7 +50,7 @@ func (s *Sitter) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		var netOpError *net.OpError
 		if ok := errors.As(err, &netOpError); ok {
 			if netOpError.Op == "dial" {
-				log.Printf("Restarting workspace %s\n", ws.Key)
+				log.Printf("Restarting workspace %s\n", ws.Path)
 				s.deleteWorkspace(ws)
 				err = ws.ReverseProxy(w, r)
 				if err != nil {
@@ -55,34 +68,26 @@ func (s *Sitter) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Sitter) GetWorkspaceForRequest(w http.ResponseWriter, r *http.Request) (*workspace.Workspace, error) {
-	var folder string
-	var key string
+	var path string
 	// Get the folder from either the query string or the cookie
-	folder = r.URL.Query().Get("folder")
-	cookie, err := r.Cookie("workspace-key")
-	if folder == "" && cookie == nil {
+	cookie, err := r.Cookie(WORKSPACE_PATH_COOKIE)
+	path = r.URL.Query().Get("folder")
+	if path == "" {
+		path = cookie.Value
+	}
+	if path == "" {
 		http.Error(w, "Could not determine folder", http.StatusBadRequest)
 		return nil, err
-	} else if folder == "" {
-		key = cookie.Value
-		rawFolder, err := base64.StdEncoding.DecodeString(key)
-		if err != nil {
-			http.Error(w, "Invalid workspace key", http.StatusBadRequest)
-			return nil, err
-		}
-		folder = string(rawFolder)
-	} else { // folder != ""
-		key = workspace.CreateKeyFromFolder(folder)
 	}
 
-	ws, err := s.GetWorkspace(r.Context(), key)
+	ws, err := s.GetWorkspace(r.Context(), path)
 	if err != nil {
-		ws = workspace.CreateWorkspace(r.Context(), folder)
+		ws = workspace.CreateWorkspace(r.Context(), path)
 		s.addWorkspace(ws)
 	}
 
 	if cookie == nil {
-		cookie := http.Cookie{Name: "workspace-key", Value: ws.Key, Path: "/"}
+		cookie := http.Cookie{Name: WORKSPACE_PATH_COOKIE, Value: ws.Path, Path: "/"}
 		http.SetCookie(w, &cookie)
 	}
 
@@ -91,11 +96,11 @@ func (s *Sitter) GetWorkspaceForRequest(w http.ResponseWriter, r *http.Request) 
 
 // getWorkspace returns a workspace for the given path hash. If the workspace
 // doesn't exist, it will be created and added to the sitter.
-func (s *Sitter) GetWorkspace(ctx context.Context, key string) (*workspace.Workspace, error) {
+func (s *Sitter) GetWorkspace(ctx context.Context, path string) (*workspace.Workspace, error) {
 	s.workspaceMapMu.Lock()
 	defer s.workspaceMapMu.Unlock()
 
-	if workspace, ok := s.workspaceMap[key]; ok {
+	if workspace, ok := s.workspaceMap[path]; ok {
 		return workspace, nil
 	}
 
@@ -105,14 +110,23 @@ func (s *Sitter) GetWorkspace(ctx context.Context, key string) (*workspace.Works
 func (sitter *Sitter) addWorkspace(workspace *workspace.Workspace) {
 	sitter.workspaceMapMu.Lock()
 	defer sitter.workspaceMapMu.Unlock()
-	sitter.workspaceMap[workspace.Key] = workspace
-	log.Printf("Added workspace: %s \n", workspace.Folder())
+	sitter.workspaceMap[workspace.Path] = workspace
+	log.Printf("Added workspace: %s \n", workspace.Path)
 }
 
 func (sitter *Sitter) deleteWorkspace(workspace *workspace.Workspace) {
 	sitter.workspaceMapMu.Lock()
 	defer sitter.workspaceMapMu.Unlock()
 	workspace.Close()
-	delete(sitter.workspaceMap, workspace.Key)
-	log.Printf("Deleted workspace: %s \n", workspace.Folder())
+	delete(sitter.workspaceMap, workspace.Path)
+	log.Printf("Deleted workspace: %s \n", workspace.Path)
+}
+
+func (s *Sitter) DeleteWorkspace(path string) error {
+	ws, err := s.GetWorkspace(context.Background(), path)
+	if err != nil {
+		return err
+	}
+	s.deleteWorkspace(ws)
+	return nil
 }

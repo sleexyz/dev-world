@@ -15,17 +15,9 @@ import (
 )
 
 type Workspace struct {
-	Key        string
+	Path       string
 	SocketPath string
 	Process    *os.Process
-}
-
-func (workspace *Workspace) Folder() string {
-	folder, err := base64.StdEncoding.DecodeString(workspace.Key)
-	if err != nil {
-		panic(err)
-	}
-	return string(folder)
 }
 
 func (workspace *Workspace) ReverseProxy(w http.ResponseWriter, r *http.Request) error {
@@ -93,8 +85,8 @@ func CreateKeyFromFolder(folder string) string {
 	return base64.StdEncoding.EncodeToString([]byte(folder))
 }
 
-func CreateWorkspace(ctx context.Context, folder string) *Workspace {
-	key := CreateKeyFromFolder(folder)
+func CreateWorkspace(ctx context.Context, path string) *Workspace {
+	key := CreateKeyFromFolder(path)
 	codeServerSocketPath := fmt.Sprintf("/tmp/code-server-%s.sock", key)
 
 	_, err := os.Create(codeServerSocketPath)
@@ -103,7 +95,7 @@ func CreateWorkspace(ctx context.Context, folder string) *Workspace {
 	}
 
 	// Start a new child process for the folder
-	cmd := exec.Command("code-server", "--socket", codeServerSocketPath, folder)
+	cmd := exec.Command("code-server", "--socket", codeServerSocketPath, path)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -112,7 +104,7 @@ func CreateWorkspace(ctx context.Context, folder string) *Workspace {
 	}
 
 	workspace := &Workspace{
-		Key:        key,
+		Path:       path,
 		SocketPath: codeServerSocketPath,
 		Process:    cmd.Process,
 	}

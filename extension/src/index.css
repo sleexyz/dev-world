@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply h-full;
+    @apply w-full;
+    @apply bg-gray-800;
+    @apply text-white;
+    font-family: Monaco, Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+}
+
+@layer components {
+  .container {
+    max-width: 768px;
+    margin: 0 auto;
+  }
+  .btn {
+    background-color: #bd2f07;
+    color: #ffffff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+  .btn:hover {
+    background-color: #de5b39;
+  }
+  .btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(189, 47, 7, 0.5);
+  }
+}

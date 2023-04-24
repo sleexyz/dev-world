@@ -43,8 +43,8 @@ func InitializeSitter() *Sitter {
 	return sitter
 }
 
-func (s *Sitter) reconnectToWorkspace(ctx context.Context, folder string) (*workspace.Workspace, error) {
-	key := base64.StdEncoding.EncodeToString([]byte(folder))
+func (s *Sitter) reconnectToWorkspace(ctx context.Context, path string) (*workspace.Workspace, error) {
+	key := base64.StdEncoding.EncodeToString([]byte(path))
 	codeServerSocketPath := fmt.Sprintf("/tmp/code-server-%s.sock", key)
 
 	_, err := os.Stat(codeServerSocketPath)
@@ -58,13 +58,13 @@ func (s *Sitter) reconnectToWorkspace(ctx context.Context, folder string) (*work
 		if err := os.Remove(codeServerSocketPath); err != nil {
 			log.Fatalf("Failed to remove existing socket: %v", err)
 		}
-		log.Printf("Removed stale socket at %s\n", folder)
+		log.Printf("Removed stale socket at %s\n", path)
 		return nil, err
 	}
 
 	// If the socket already exists, try to reconnect to it
 	workspace := &workspace.Workspace{
-		Key:        key,
+		Path:       path,
 		SocketPath: codeServerSocketPath,
 		Process:    process,
 	}
@@ -72,7 +72,7 @@ func (s *Sitter) reconnectToWorkspace(ctx context.Context, folder string) (*work
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("Reconnecting to existing socket for %s\n", folder)
+	log.Printf("Reconnecting to existing socket for %s\n", path)
 	return workspace, nil
 }
 
