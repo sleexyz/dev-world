@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -15,6 +16,8 @@ type State struct {
 }
 
 func main() {
+	assertFreePort(12345)
+	assertFreePort(12344)
 	logger.SetPrefix("\033[33m[updater] \033[0m") // yellow
 	state := &State{
 		shouldUpdateChan: make(chan struct{}),
@@ -93,6 +96,16 @@ func runUpdater(shouldUpdateChan chan struct{}) {
 	})
 }
 
+func assertFreePort(port int) {
+	cmd := exec.Command("sh", "-c", "lsof -sTCP:LISTEN -i:"+fmt.Sprintf("%d", port))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err == nil {
+		logger.Fatalf("Port %d is already in use", port)
+	}
+}
+
 func loop(fn func()) {
 	lastSampleTime := time.Now()
 	runs := 0
@@ -100,7 +113,7 @@ func loop(fn func()) {
 		runs += 1
 		fn()
 		if runs > 3 {
-			if time.Since(lastSampleTime) < time.Second {
+			if time.Since(lastSampleTime) < 10*time.Second {
 				logger.Fatalf("Process exited too quickly (%d runs in %s)", runs, time.Since(lastSampleTime))
 			} else {
 				lastSampleTime = time.Now()
