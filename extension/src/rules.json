@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "regexSubstitution": "http://localhost:12345/workspace?alias=\\1"
+      }
+    },
+    "condition": {
+      "requestDomains": ["dev"],
+      "regexFilter": "^http://dev/(.+)",
+      "resourceTypes": ["main_frame"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "transform": { "host": "localhost", "port": "12345" }
+      }
+    },
+    "condition": {
+      "requestDomains": ["dev"],
+      "regexFilter": "^http://dev/$",
+      "resourceTypes": ["main_frame"]
+    }
+  }
+]

@@ -72,10 +72,9 @@ func (s *Sitter) GetWorkspaceForRequest(w http.ResponseWriter, r *http.Request) 
 	// Get the folder from either the query string or the cookie
 	cookie, err := r.Cookie(WORKSPACE_PATH_COOKIE)
 	path = r.URL.Query().Get("folder")
-	if path == "" {
+	if cookie != nil && path == "" {
 		path = cookie.Value
-	}
-	if path == "" {
+	} else if path == "" {
 		http.Error(w, "Could not determine folder", http.StatusBadRequest)
 		return nil, err
 	}

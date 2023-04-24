@@ -7,8 +7,11 @@ import (
 	"net/http/httputil"
 	"os"
 	"os/signal"
+	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/hostrouter"
 	"github.com/sleexyz/dev-world/pkg/sitter"
 )
 
@@ -22,31 +25,19 @@ func createApp() *App {
 	}
 }
 
-func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("folder") == "" {
-		if r.URL.Path == "/" {
-			// Unset cookie:
-			http.SetCookie(w, &http.Cookie{
-				Name:   sitter.WORKSPACE_PATH_COOKIE,
-				Value:  "",
-				Path:   "/",
-				MaxAge: -1,
-			})
-		}
-		cookieValue, _ := r.Cookie(sitter.WORKSPACE_PATH_COOKIE)
-		if r.URL.Path == "/" || cookieValue == nil {
-			proxy := &httputil.ReverseProxy{
-				Director: func(req *http.Request) {
-					req.URL.Scheme = "http"
-					req.URL.Host = "localhost:12344"
-					req.URL.Path = r.URL.Path
-				},
-			}
-			proxy.ServeHTTP(w, r)
-			return
-		}
-	}
+func (a *App) ProxyToCodeServer(w http.ResponseWriter, r *http.Request) {
 	a.sitter.ProxyHandler(w, r)
+}
+
+func (a *App) ProxyToFrontend(w http.ResponseWriter, r *http.Request) {
+	proxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
+			req.URL.Scheme = "http"
+			req.URL.Host = "localhost:12344"
+			req.URL.Path = r.URL.Path
+		},
+	}
+	proxy.ServeHTTP(w, r)
 }
 
 type GetWorkspacesResponse struct {
@@ -79,6 +70,29 @@ func (a *App) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 	a.GetWorkspaces(w, r)
 }
 
+func (a *App) RedirectToWorkspace(w http.ResponseWriter, r *http.Request) {
+	home := os.Getenv("HOME")
+	r.URL.Query().Get("alias")
+	path := filepath.Join(home, r.URL.Query().Get("alias"))
+	log.Printf("Redirecting to %s\n", path)
+	http.Redirect(w, r, "http://dev.localhost:12345?folder="+path, http.StatusTemporaryRedirect)
+}
+
+func (app *App) makeCodeServerRouter() chi.Router {
+	r := chi.NewRouter()
+	r.NotFound(app.ProxyToCodeServer)
+	return r
+}
+
+func (app *App) makeFrontendRouter() chi.Router {
+	r := chi.NewRouter()
+	r.Get("/workspace", app.RedirectToWorkspace)
+	r.Get("/__api__/workspaces", app.GetWorkspaces)
+	r.Delete("/__api__/workspace", app.DeleteWorkspace)
+	r.NotFound(app.ProxyToFrontend)
+	return r
+}
+
 func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -92,11 +106,18 @@ func main() {
 	if port == "" {
 		port = "12345"
 	}
+
 	app := createApp()
+	hr := hostrouter.New()
+
+	codeServerRouter := app.makeCodeServerRouter()
+	frontendRouter := app.makeFrontendRouter()
+	hr.Map("localhost:12345", frontendRouter)
+	hr.Map("dev.localhost:12345", codeServerRouter)
+
 	r := chi.NewRouter()
-	r.Get("/__api__/workspaces", app.GetWorkspaces)
-	r.Delete("/__api__/workspace", app.DeleteWorkspace)
-	r.NotFound(app.ServeHTTP)
+	r.Use(middleware.Logger)
+	r.Mount("/", hr)
 
 	http.ListenAndServe(":"+port, r)
 	log.Printf("Listening on port %s\n", port)

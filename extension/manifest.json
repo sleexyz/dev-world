@@ -3,7 +3,7 @@
   "description": "Develop everywhere",
   "version": "1.0",
   "manifest_version": 3,
-  "permissions": ["activeTab"],
+  "permissions": ["activeTab", "declarativeNetRequest"],
   "devtools_page": "devtools_page.html",
   "action": {},
   "background": {
@@ -18,5 +18,14 @@
       },
       "description": "Open dev-world on the current page."
     }
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "src/rules.json"
+      }
+    ]
   }
 }

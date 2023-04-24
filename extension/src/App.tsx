@@ -42,7 +42,7 @@ function App() {
 
 function Workspace({ path }: { path: string }) {
   const projectName = path.split("/").pop();
-  const link = `http://localhost:12345/?folder=${path}`;
+  const link = `http://dev.localhost:12345/?folder=${path}`;
   return (
     <div className="flex space-x-4">
       <ActiveLinkMenu path={path} />
