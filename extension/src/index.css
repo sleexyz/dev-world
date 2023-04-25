@@ -3,13 +3,13 @@
 @tailwind utilities;
 
 @layer base {
-  body {
+  html {
     @apply h-full;
     @apply w-full;
     @apply bg-gray-800;
     @apply text-white;
     font-family: Monaco, Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 1rem;
+    font-size: 24px;
     line-height: 1.5;
   }
 }

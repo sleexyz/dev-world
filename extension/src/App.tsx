@@ -1,6 +1,7 @@
 import useSWR, { mutate } from "swr";
 import { Menu, Transition } from "@headlessui/react";
 import { Fragment } from "react";
+import { Link } from "react-router-dom";
 
 type DebugResponse = {
   workspaces: string[];
@@ -41,14 +42,14 @@ function App() {
 }
 
 function Workspace({ path }: { path: string }) {
-  const projectName = path.split("/").pop();
-  const link = `http://dev.localhost:12345/?folder=${path}`;
+  const alias = path.split("/").pop();
+  const link = `/${alias}`;
   return (
-    <div className="flex space-x-4">
+    <div className="flex justify-between">
+      <Link to={link}>
+        <h2><span className="opacity-20">dev/</span>{alias}</h2>
+      </Link>
       <ActiveLinkMenu path={path} />
-      <a href={link}>
-        <h2>{projectName}</h2>
-      </a>
     </div>
   );
 }
@@ -73,7 +74,7 @@ function ActiveLinkMenu({ path }: { path: string }) {
   }
   return (
     <Menu as="div" className="relative inline-block text-left">
-      <Menu.Button className="opacity-70">⋮</Menu.Button>
+      <Menu.Button className="opacity-20">...</Menu.Button>
       <Transition
         as={Fragment}
         enter="transition ease-out duration-100"
@@ -83,7 +84,7 @@ function ActiveLinkMenu({ path }: { path: string }) {
         leaveFrom="transform opacity-100 scale-100"
         leaveTo="transform opacity-0 scale-95"
       >
-        <Menu.Items className="absolute left-0 z-10 mt-2 w-56 origin-top-right rounded-md shadow-lg ring-1 bg-slate-600 ring-white ring-opacity-5 focus:outline-none">
+        <Menu.Items className="absolute right-0 z-10 mt-2 w-56 origin-top-right rounded-md shadow-lg ring-1 bg-slate-600 ring-white ring-opacity-5 focus:outline-none">
           <div className="py-1">
             <Menu.Item>
               <button

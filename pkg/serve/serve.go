@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
@@ -44,7 +47,7 @@ type GetWorkspacesResponse struct {
 	Workspaces []string `json:"workspaces"`
 }
 
-func (a *App) GetWorkspaces(w http.ResponseWriter, r *http.Request) {
+func (a *App) HandleGetWorkspaces(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	ws := a.sitter.GetWorkspaces()
 	resp := &GetWorkspacesResponse{
@@ -56,7 +59,7 @@ func (a *App) GetWorkspaces(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *App) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
+func (a *App) HandleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("folder")
 	if path == "" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -64,10 +67,11 @@ func (a *App) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	err := a.sitter.DeleteWorkspace(path)
 	if err != nil {
+		log.Printf("Error deleting workspace: %s\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	a.GetWorkspaces(w, r)
+	a.HandleGetWorkspaces(w, r)
 }
 
 func (a *App) RedirectToWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +79,7 @@ func (a *App) RedirectToWorkspace(w http.ResponseWriter, r *http.Request) {
 	r.URL.Query().Get("alias")
 	path := filepath.Join(home, r.URL.Query().Get("alias"))
 	log.Printf("Redirecting to %s\n", path)
-	http.Redirect(w, r, "http://dev.localhost:12345?folder="+path, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "https://dev.localhost:12345?folder="+path, http.StatusTemporaryRedirect)
 }
 
 func (app *App) makeCodeServerRouter() chi.Router {
@@ -87,8 +91,8 @@ func (app *App) makeCodeServerRouter() chi.Router {
 func (app *App) makeFrontendRouter() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/workspace", app.RedirectToWorkspace)
-	r.Get("/__api__/workspaces", app.GetWorkspaces)
-	r.Delete("/__api__/workspace", app.DeleteWorkspace)
+	r.Get("/__api__/workspaces", app.HandleGetWorkspaces)
+	r.Delete("/__api__/workspace", app.HandleDeleteWorkspace)
 	r.NotFound(app.ProxyToFrontend)
 	return r
 }
@@ -114,14 +118,74 @@ func main() {
 	frontendRouter := app.makeFrontendRouter()
 	hr.Map("localhost:12345", frontendRouter)
 	hr.Map("dev.localhost:12345", codeServerRouter)
+	hr.Map("d", frontendRouter)
+	hr.Map("dev", frontendRouter)
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Mount("/", hr)
+	router := chi.NewRouter()
+	router.Use(middleware.Logger)
+	router.Mount("/", hr)
 
-	http.ListenAndServe(":"+port, r)
+	// Create a custom handler function for CONNECT requests
+	connectHandler := func(w http.ResponseWriter, r *http.Request) {
+		// Establish a plain-text TCP connection to the target server
+		conn, err := net.Dial("tcp", "localhost:12345")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		// Return a 200 OK response to the client
+		w.WriteHeader(http.StatusOK)
+		// Hijack the client connection to establish a bidirectional stream with the target server
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
+			return
+		}
+		clientConn, _, err := hijacker.Hijack()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// Copy data bidirectionally between the client and the target server
+		go func() {
+			defer conn.Close()
+			defer clientConn.Close()
+			_, err := io.Copy(conn, clientConn)
+			if err != nil {
+				log.Println(err)
+			}
+		}()
+		go func() {
+			defer conn.Close()
+			defer clientConn.Close()
+			_, err := io.Copy(clientConn, conn)
+			if err != nil {
+				log.Println(err)
+			}
+		}()
+	}
+
+	server := &http.Server{
+		Addr: ":" + port,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodConnect {
+				log.Printf("Handling CONNECT request for %s\n", r.Host)
+				connectHandler(w, r)
+			} else {
+				log.Printf("Handling %s request for %s\n", r.Method, r.URL.Path)
+				router.ServeHTTP(w, r)
+			}
+		}),
+		// Force HTTP/1.1 to enable hijacking
+		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
+		TLSConfig: &tls.Config{
+			InsecureSkipVerify: true, // Disabling certificate verification, use with caution.
+		},
+	}
+
 	log.Printf("Listening on port %s\n", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	err := server.ListenAndServeTLS("localhost+4.pem", "localhost+4-key.pem")
+	if err != nil {
 		log.Fatal(err)
 	}
 }

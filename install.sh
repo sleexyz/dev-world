@@ -1,6 +1,7 @@
 #!/bin/bash
 
 ./build.sh
+./build_updater.sh
 
 SCRIPT_PATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 plist_content=$(cat << EOF
@@ -19,7 +20,7 @@ plist_content=$(cat << EOF
     <string>/bin/zsh</string>
     <string>-c</string>
     <string>-l</string>
-    <string>go run ./updater</string>
+    <string>./bin/updater</string>
   </array>
 
   <key>StandardErrorPath</key>
@@ -45,7 +46,7 @@ echo "$plist_content" > ~/Library/LaunchAgents/dev-world.plist
 launchctl load -w ~/Library/LaunchAgents/dev-world.plist
 launchctl start dev-world
 
-echo 'Successfully installed dev-world. Visit http://localhost:12345'
+echo 'Successfully installed dev-world. Visit https://localhost:12345'
 
 trap 'echo "Caught SIGINT, exiting tail_logs.sh. Run uninstall.sh to uninstall."; exit 0' SIGINT
 ./tail_logs.sh
