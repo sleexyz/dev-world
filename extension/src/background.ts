@@ -1,5 +1,3 @@
-console.log("background.ts");
-
 // Install PAC script on install
 chrome.runtime.onInstalled.addListener(() => {
   console.log("onInstalled...");
@@ -13,7 +11,6 @@ chrome.runtime.onInstalled.addListener(() => {
                 if (host == 'dev' || host == 'd') {
                     return "HTTPS localhost:12345";
                 }
-                return "DIRECT";
             }
             `,
         },
