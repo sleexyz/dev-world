@@ -1,5 +1,5 @@
 chrome.devtools.panels.create(
-  "Dev World",
+  "dev/",
   "",
   "/panel.html",
   undefined

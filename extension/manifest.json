@@ -3,29 +3,11 @@
   "description": "Develop everywhere",
   "version": "1.0",
   "manifest_version": 3,
-  "permissions": ["activeTab", "declarativeNetRequest", "proxy"],
+  "permissions": ["proxy"],
   "devtools_page": "devtools_page.html",
   "action": {},
   "background": {
     "service_worker": "src/background.ts",
     "type": "module"
-  },
-  "host_permissions": ["*://*/*"],
-  "commands": {
-    "_execute_action": {
-      "suggested_key": {
-        "default": "MacCtrl+B"
-      },
-      "description": "Open dev-world on the current page."
-    }
-  },
-  "declarative_net_request": {
-    "rule_resources": [
-      {
-        "id": "ruleset_1",
-        "enabled": false,
-        "path": "src/rules.json"
-      }
-    ]
   }
 }

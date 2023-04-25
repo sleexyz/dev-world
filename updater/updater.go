@@ -31,12 +31,15 @@ func main() {
 	go func() {
 		runUpdater(state.shouldUpdateChan)
 	}()
+	go func() {
+		runExtensionUpdater()
+	}()
 	<-make(chan struct{})
 }
 
 func runClientDevServer(state *State) {
 	loop(func() {
-		cmd := exec.Command("sh", "-c", "cd extension && npm run dev")
+		cmd := exec.Command("sh", "-c", "cd client && npm run dev")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		logger.Println("Starting client dev server.")
@@ -71,6 +74,21 @@ func runProgram(state *State) {
 		case <-doneChan:
 			logger.Println("Process exited")
 		}
+	})
+}
+
+func runExtensionUpdater() {
+	loop(func() {
+		logger.Println("Running updater")
+		cmd := exec.Command(
+			"zsh",
+			"-c",
+			"-l",
+			"(cd extension; cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -p -r -s -z 'npm run build')",
+		)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Run()
 	})
 }
 
