@@ -18,11 +18,6 @@ export default defineConfig({
   server: {
     port: 12344,
     strictPort: true,
-    hmr: {
-      protocol: "wss",
-      host: "localhost",
-      clientPort: 12345,
-    }
   },
   clearScreen: false,
 });
