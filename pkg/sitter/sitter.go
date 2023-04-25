@@ -86,7 +86,14 @@ func (s *Sitter) GetWorkspaceForRequest(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if cookie == nil {
-		cookie := http.Cookie{Name: WORKSPACE_PATH_COOKIE, Value: ws.Path, Path: "/"}
+		cookie := http.Cookie{
+			Name:     WORKSPACE_PATH_COOKIE,
+			Value:    ws.Path,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+			Secure:   true,
+		}
 		http.SetCookie(w, &cookie)
 	}
 
