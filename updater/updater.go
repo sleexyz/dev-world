@@ -34,6 +34,9 @@ func main() {
 	go func() {
 		runExtensionUpdater()
 	}()
+	go func() {
+		runPacmanExtensionUpdater()
+	}()
 	<-make(chan struct{})
 }
 
@@ -79,12 +82,27 @@ func runProgram(state *State) {
 
 func runExtensionUpdater() {
 	loop(func() {
-		logger.Println("Running updater")
+		logger.Println("Running extension updater")
 		cmd := exec.Command(
 			"zsh",
 			"-c",
 			"-l",
-			"(cd extension; cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -p -r -s -z 'npm run build')",
+			"(cd extension; cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -r -s 'npm run build')",
+		)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+	})
+}
+
+func runPacmanExtensionUpdater() {
+	loop(func() {
+		logger.Println("Running PACman extension updater")
+		cmd := exec.Command(
+			"zsh",
+			"-c",
+			"-l",
+			"(cd pacman; cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -r -s 'npm run build')",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
