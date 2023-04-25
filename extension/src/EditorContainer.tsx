@@ -20,3 +20,8 @@ export function EditorContainer() {
     </>
   );
 }
+
+// Do not refresh the page so we can edit dev-world from within dev-world :)
+if (import.meta.hot) {
+  import.meta.hot.accept(() => import.meta.hot.invalidate());
+}
