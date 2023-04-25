@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/hostrouter"
 	"github.com/sleexyz/dev-world/pkg/sitter"
+	"github.com/soheilhy/cmux"
 )
 
 type App struct {
@@ -104,7 +105,6 @@ func main() {
 		<-c
 		log.Println("Exiting 1...")
 		os.Exit(0)
-		log.Println("Exited. This should not print.")
 	}()
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -165,8 +165,20 @@ func main() {
 		}()
 	}
 
-	server := &http.Server{
-		Addr: ":" + port,
+	l, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	m := cmux.New(l)
+	httpsL := m.Match(cmux.TLS())
+	httpL := m.Match(cmux.HTTP1Fast())
+
+	httpS := &http.Server{
+		Handler: router,
+	}
+	httpsS := &http.Server{
+		// Addr: ":" + port,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodConnect {
 				log.Printf("Handling CONNECT request for %s\n", r.Host)
@@ -184,8 +196,17 @@ func main() {
 	}
 
 	log.Printf("Listening on port %s\n", port)
-	err := server.ListenAndServeTLS("localhost+4.pem", "localhost+4-key.pem")
-	if err != nil {
-		log.Fatal(err)
-	}
+	go func() {
+		err := httpsS.ServeTLS(httpsL, "localhost+4.pem", "localhost+4-key.pem")
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	go func() {
+		err := httpS.Serve(httpL)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	m.Serve()
 }
