@@ -1,10 +1,9 @@
 {
-  "name": "dev-world",
-  "description": "Develop everywhere",
+  "name": "PACman",
+  "description": "",
   "version": "1.0",
   "manifest_version": 3,
-  "permissions": [],
-  "devtools_page": "devtools_page.html",
+  "permissions": ["proxy"],
   "action": {},
   "background": {
     "service_worker": "src/background.ts",

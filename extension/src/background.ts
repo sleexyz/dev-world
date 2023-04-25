@@ -1,23 +1,15 @@
-// Install PAC script on install
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("onInstalled...");
-  chrome.proxy.settings.set(
-    {
-      value: {
-        mode: "pac_script",
-        pacScript: {
-          data: `
-            function FindProxyForURL(url, host) {
-                if (host == 'dev' || host == 'd') {
-                    return "HTTPS localhost:12345";
-                }
-            }
-            `,
-        },
-      },
+const PACMAN_EXTENSION_ID = "jbclhgpgaijegjnfhbpidgaooihpcphd";
+
+chrome.runtime.onInstalled.addListener(async () => {
+  //Install PAC script on install by messaging the pacman extension
+  const response = await chrome.runtime.sendMessage(PACMAN_EXTENSION_ID, {
+    setProxyRequest: {
+      host: "dev",
+      destination: "localhost:12345",
+      type: "HTTPS",
     },
-    () => {
-      console.log("set proxy");
-    }
-  );
+  });
+  if (response.setProxyResponse) {
+    console.log("Set proxy");
+  }
 });
