@@ -1,16 +1,19 @@
 package workspace
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -85,6 +88,46 @@ func CreateKeyFromFolder(folder string) string {
 	return base64.StdEncoding.EncodeToString([]byte(folder))
 }
 
+func (w *Workspace) OpenFile(file string, line int, column int) {
+	fileURI := fmt.Sprintf("%s:%d:%d", file, line, column)
+
+	jsonData, err := json.Marshal(map[string]interface{}{
+		"type":             "open",
+		"fileURIs":         []string{fileURI},
+		"forceReuseWindow": true,
+		"gotoLineMode":     true,
+	})
+	if err != nil {
+		log.Fatalln("Error marshalling JSON:", err)
+	}
+	log.Printf("Sending JSON: %s to server at %s\n", jsonData, w.SocketPath)
+	httpc := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				// TODO: write to the vscode-ipc socket instead of the code-server socket.
+				return net.Dial("unix", w.SocketPath)
+			},
+		},
+	}
+	resp, err := httpc.Do(&http.Request{
+		Method: "POST",
+		URL:    &url.URL{Scheme: "http", Host: "unix", Path: "/"},
+		Body:   io.NopCloser(bytes.NewReader(jsonData)),
+	})
+	if err != nil {
+		log.Fatalln("Error sending request:", err)
+	}
+
+	// Print response:
+	respData, err := httputil.DumpResponse(resp, true)
+	if err != nil {
+		log.Fatalln("Error dumping response:", err)
+	}
+	log.Printf("Response: %s\n", respData)
+
+	defer resp.Body.Close()
+}
+
 func CreateWorkspace(ctx context.Context, path string) *Workspace {
 	key := CreateKeyFromFolder(path)
 	codeServerSocketPath := fmt.Sprintf("/tmp/code-server-%s.sock", key)
@@ -96,7 +139,7 @@ func CreateWorkspace(ctx context.Context, path string) *Workspace {
 
 	// Start a new child process for the folder
 	cmd := exec.Command("code-server", "--socket", codeServerSocketPath, path)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
+	// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {

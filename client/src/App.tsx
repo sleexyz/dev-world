@@ -9,7 +9,7 @@ type DebugResponse = {
 
 function App() {
   const response = useSWR(
-    "/__api__/workspaces",
+    "/api/workspaces",
     async (url) => {
       const res = await fetch(url);
       const data = (await res.json()) as DebugResponse;
@@ -56,7 +56,7 @@ function Workspace({ path }: { path: string }) {
 
 async function deleteWorkspace(path: string): Promise<DebugResponse> {
   const query = new URLSearchParams({ folder: path }).toString();
-  const resp = await fetch(`/__api__/workspace?${query}`, {
+  const resp = await fetch(`/api/workspace?${query}`, {
     method: "DELETE",
   });
   return resp.json();
@@ -64,7 +64,7 @@ async function deleteWorkspace(path: string): Promise<DebugResponse> {
 
 function ActiveLinkMenu({ path }: { path: string }) {
   function handleDeleteWorkspace() {
-    mutate("/__api__/workspaces", deleteWorkspace(path), {
+    mutate("/api/workspaces", deleteWorkspace(path), {
       optimisticData: (data: DebugResponse) => ({
         ...data,
         workspaces: data.workspaces.filter((p) => p !== path),
