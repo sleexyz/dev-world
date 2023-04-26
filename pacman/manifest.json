@@ -3,7 +3,7 @@
   "description": "",
   "version": "1.0",
   "manifest_version": 3,
-  "permissions": ["proxy"],
+  "permissions": ["proxy", "storage"],
   "action": {},
   "background": {
     "service_worker": "src/background.ts",
