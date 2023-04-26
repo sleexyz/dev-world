@@ -2,71 +2,70 @@ package sitter
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/sleexyz/dev-world/pkg/workspace"
 )
 
-func InitializeSitter() *Sitter {
+// Loads the sitter state from disk and reconnects to any existing workspaces
+func LoadSitter() *Sitter {
 	sitter := CreateNewSitter()
-	pattern := regexp.MustCompile(`code-server-(.+)\.sock`)
-	files, err := os.ReadDir("/tmp")
-	if err != nil {
-		panic(err)
-	}
-	for _, file := range files {
-		info, err := file.Info()
-		if err != nil || file.IsDir() || (info.Mode()&os.ModeSocket) == 0 {
-			continue
+	sitterState := LoadSitterState()
+
+	// Attempt reconnection to existing workspaces, and then re-save the sitter state.
+	for _, ws := range sitterState.WorkspaceMap {
+		ws, err := sitter.reconnectToWorkspace(context.Background(), ws.Path)
+		if err != nil {
+			cleanupDeadWorkspace(ws.Path)
 		}
-		if matches := pattern.FindStringSubmatch(file.Name()); len(matches) > 0 {
-			key := matches[1]
-			folder, err := base64.StdEncoding.DecodeString(key)
-			if err != nil {
-				log.Printf("Invalid workspace key: %s", key)
-				continue
-			}
-			ws, err := sitter.reconnectToWorkspace(context.Background(), string(folder))
-			if err != nil {
-				ws = workspace.CreateWorkspace(context.Background(), string(folder))
-			}
-			sitter.addWorkspace(ws)
-		}
+		sitter.addWorkspace(ws)
 	}
+	sitter.SaveSitter()
+
 	return sitter
 }
 
+// Saves the sitter state to disk
+func (s *Sitter) SaveSitter() {
+	var SitterState SitterState
+	SitterState.WorkspaceMap = make(map[string]*workspace.Workspace)
+	for _, ws := range s.workspaceMap {
+		SitterState.WorkspaceMap[ws.Path] = ws
+	}
+	SaveSitterState(&SitterState)
+}
+
+func cleanupDeadWorkspace(path string) {
+	codeServerSocketPath := workspace.GetCodeServerSocketPath(path)
+	if err := os.Remove(codeServerSocketPath); err != nil {
+		log.Fatalf("Failed to remove existing socket: %v", err)
+	}
+	log.Printf("Removed stale socket at %s\n", path)
+}
+
 func (s *Sitter) reconnectToWorkspace(ctx context.Context, path string) (*workspace.Workspace, error) {
-	key := base64.StdEncoding.EncodeToString([]byte(path))
-	codeServerSocketPath := fmt.Sprintf("/tmp/code-server-%s.sock", key)
+	codeServerSocketPath := workspace.GetCodeServerSocketPath(path)
 
 	_, err := os.Stat(codeServerSocketPath)
 	if err != nil {
 		return nil, err
 	}
 
-	process, err := getMatchingProcess(ctx, codeServerSocketPath)
+	process, err := getCodeServerProcess(ctx, codeServerSocketPath)
 	if err != nil {
-		// If the socket exists but the process doesn't, remove the socket
-		if err := os.Remove(codeServerSocketPath); err != nil {
-			log.Fatalf("Failed to remove existing socket: %v", err)
-		}
-		log.Printf("Removed stale socket at %s\n", path)
 		return nil, err
 	}
 
 	// If the socket already exists, try to reconnect to it
 	workspace := &workspace.Workspace{
-		Path:       path,
-		SocketPath: codeServerSocketPath,
-		Process:    process,
+		Path:    path,
+		Socket:  codeServerSocketPath,
+		Process: process,
 	}
 	err = workspace.WaitForSocket(ctx)
 	if err != nil {
@@ -76,7 +75,7 @@ func (s *Sitter) reconnectToWorkspace(ctx context.Context, path string) (*worksp
 	return workspace, nil
 }
 
-func getMatchingProcess(ctx context.Context, socketPath string) (*os.Process, error) {
+func getCodeServerProcess(ctx context.Context, socketPath string) (*os.Process, error) {
 	cmd := exec.CommandContext(ctx, "pgrep", "-f", socketPath)
 	out, err := cmd.Output()
 	if err != nil {

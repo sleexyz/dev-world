@@ -18,15 +18,15 @@ import (
 )
 
 type Workspace struct {
-	Path       string
-	SocketPath string
-	Process    *os.Process
+	Path    string `json:"path"`
+	Socket  string `json:"socket"`
+	Process *os.Process
 }
 
 func (workspace *Workspace) ReverseProxy(w http.ResponseWriter, r *http.Request) error {
 	transport := &http.Transport{
 		DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-			return net.Dial("unix", workspace.SocketPath)
+			return net.Dial("unix", workspace.Socket)
 		},
 	}
 
@@ -67,7 +67,7 @@ func (workspace *Workspace) WaitForSocket(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			conn, err := net.Dial("unix", workspace.SocketPath)
+			conn, err := net.Dial("unix", workspace.Socket)
 			if err == nil {
 				conn.Close()
 				return nil
@@ -81,7 +81,7 @@ func (workspace *Workspace) WaitForSocket(ctx context.Context) error {
 
 func (workspace *Workspace) Close() {
 	workspace.Process.Kill()
-	os.Remove(workspace.SocketPath)
+	os.Remove(workspace.Socket)
 }
 
 func CreateKeyFromFolder(folder string) string {
@@ -100,12 +100,12 @@ func (w *Workspace) OpenFile(file string, line int, column int) {
 	if err != nil {
 		log.Fatalln("Error marshalling JSON:", err)
 	}
-	log.Printf("Sending JSON: %s to server at %s\n", jsonData, w.SocketPath)
+	log.Printf("Sending JSON: %s to server at %s\n", jsonData, w.Socket)
 	httpc := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 				// TODO: write to the vscode-ipc socket instead of the code-server socket.
-				return net.Dial("unix", w.SocketPath)
+				return net.Dial("unix", w.Socket)
 			},
 		},
 	}
@@ -129,8 +129,7 @@ func (w *Workspace) OpenFile(file string, line int, column int) {
 }
 
 func CreateWorkspace(ctx context.Context, path string) *Workspace {
-	key := CreateKeyFromFolder(path)
-	codeServerSocketPath := fmt.Sprintf("/tmp/code-server-%s.sock", key)
+	codeServerSocketPath := GetCodeServerSocketPath(path)
 
 	_, err := os.Create(codeServerSocketPath)
 	if err != nil {
@@ -147,9 +146,9 @@ func CreateWorkspace(ctx context.Context, path string) *Workspace {
 	}
 
 	workspace := &Workspace{
-		Path:       path,
-		SocketPath: codeServerSocketPath,
-		Process:    cmd.Process,
+		Path:    path,
+		Socket:  codeServerSocketPath,
+		Process: cmd.Process,
 	}
 
 	err = workspace.WaitForSocket(ctx)
@@ -158,4 +157,9 @@ func CreateWorkspace(ctx context.Context, path string) *Workspace {
 	}
 
 	return workspace
+}
+
+func GetCodeServerSocketPath(folder string) string {
+	key := CreateKeyFromFolder(folder)
+	return fmt.Sprintf("%scode-server-%s.sock", os.TempDir(), key)
 }

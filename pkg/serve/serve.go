@@ -33,7 +33,7 @@ type App struct {
 
 func createApp() *App {
 	return &App{
-		sitter:      sitter.InitializeSitter(),
+		sitter:      sitter.LoadSitter(),
 		subscribers: make(map[string]chan Event),
 	}
 }
@@ -125,7 +125,7 @@ type GetWorkspacesResponse struct {
 
 func (a *App) HandleGetWorkspaces(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	ws := a.sitter.GetWorkspaces()
+	ws := a.sitter.GetWorkspacePaths()
 	resp := &GetWorkspacesResponse{
 		Workspaces: ws,
 	}
