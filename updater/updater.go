@@ -16,8 +16,8 @@ type State struct {
 }
 
 func main() {
-	assertFreePort(12345)
-	assertFreePort(12344)
+	freeUpPort(12345)
+	freeUpPort(12344)
 	logger.SetPrefix("\033[33m[updater] \033[0m") // yellow
 	state := &State{
 		shouldUpdateChan: make(chan struct{}),
@@ -58,6 +58,7 @@ func runClientDevServer(state *State) {
 func runProgram(state *State) {
 	loop(func() {
 		cmd := exec.Command("bin/serve")
+		// cmd := exec.Command("go", "run", "pkg/serve/serve.go")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		logger.Println("Starting process.")
@@ -132,13 +133,21 @@ func runUpdater(shouldUpdateChan chan struct{}) {
 	})
 }
 
-func assertFreePort(port int) {
+// If a process is running on the given port, kill it.
+func freeUpPort(port int) {
 	cmd := exec.Command("sh", "-c", "lsof -sTCP:LISTEN -i:"+fmt.Sprintf("%d", port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
 	if err == nil {
-		logger.Fatalf("Port %d is already in use", port)
+		logger.Printf("Port %d is already in use", port)
+		cmd := exec.Command("sh", "-c", "lsof -sTCP:LISTEN -i:"+fmt.Sprintf("%d", port)+" | awk 'NR==2{print $2}' | xargs kill")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err = cmd.Run()
+		if err != nil {
+			logger.Fatalf("Failed to kill process listening on port %d: %s", port, err)
+		}
 	}
 }
 
