@@ -40,7 +40,7 @@ func (s *Sitter) GetWorkspaceForFile(file string) *workspace.Workspace {
 	return nil
 }
 
-func (s *Sitter) GetWorkspaces() []string {
+func (s *Sitter) GetWorkspacePaths() []string {
 	s.workspaceMapMu.Lock()
 	defer s.workspaceMapMu.Unlock()
 	ws := make([]string, 0, len(s.workspaceMap))
@@ -52,7 +52,7 @@ func (s *Sitter) GetWorkspaces() []string {
 
 func (s *Sitter) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	// log.Printf("Proxying request: %s\n", r.URL.Path)
-	ws, err := s.GetWorkspaceForRequest(w, r)
+	ws, err := s.GetOrCreateWorkspace(w, r)
 	if err != nil {
 		return
 	}
@@ -79,7 +79,7 @@ func (s *Sitter) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Sitter) GetWorkspaceForRequest(w http.ResponseWriter, r *http.Request) (*workspace.Workspace, error) {
+func (s *Sitter) GetOrCreateWorkspace(w http.ResponseWriter, r *http.Request) (*workspace.Workspace, error) {
 	var path string
 	// Get the folder from either the query string or the cookie
 	cookie, err := r.Cookie(WORKSPACE_PATH_COOKIE)
@@ -95,6 +95,7 @@ func (s *Sitter) GetWorkspaceForRequest(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		ws = workspace.CreateWorkspace(r.Context(), path)
 		s.addWorkspace(ws)
+		s.SaveSitter()
 	}
 
 	if cookie == nil {
@@ -112,8 +113,6 @@ func (s *Sitter) GetWorkspaceForRequest(w http.ResponseWriter, r *http.Request) 
 	return ws, nil
 }
 
-// getWorkspace returns a workspace for the given path hash. If the workspace
-// doesn't exist, it will be created and added to the sitter.
 func (s *Sitter) GetWorkspace(ctx context.Context, path string) (*workspace.Workspace, error) {
 	s.workspaceMapMu.Lock()
 	defer s.workspaceMapMu.Unlock()
