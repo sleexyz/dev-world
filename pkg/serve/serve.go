@@ -15,18 +15,93 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/hostrouter"
+	"github.com/google/uuid"
 	"github.com/sleexyz/dev-world/pkg/sitter"
 	"github.com/soheilhy/cmux"
 )
 
+type Event struct {
+	File   string `json:"file"`
+	Line   int    `json:"line"`
+	Column int    `json:"column"`
+}
+
 type App struct {
-	sitter *sitter.Sitter
+	sitter      *sitter.Sitter
+	subscribers map[string]chan Event
 }
 
 func createApp() *App {
 	return &App{
-		sitter: sitter.InitializeSitter(),
+		sitter:      sitter.InitializeSitter(),
+		subscribers: make(map[string]chan Event),
 	}
+}
+
+func (a *App) openFile(file string, line int, column int) {
+	// Shell out to code-server
+	ws := a.sitter.GetWorkspaceForFile(file)
+	if ws == nil {
+		log.Printf("No workspace found for file %s\n", file)
+		return
+	}
+	ws.OpenFile(file, line, column)
+
+	// Broadcast to extension
+	for _, sub := range a.subscribers {
+		sub <- Event{
+			File:   file,
+			Line:   line,
+			Column: column,
+		}
+	}
+}
+
+func (a *App) ListenOpenFileSSE(w http.ResponseWriter, r *http.Request) {
+	log.Printf("New subscriber\n")
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// Generate a random id for this subscriber
+	id := uuid.New().String()
+	if _, ok := a.subscribers[id]; ok {
+		log.Printf("Subscriber with id %s already exists\n", id)
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	sub := make(chan Event)
+	a.subscribers[id] = sub
+	defer delete(a.subscribers, id)
+	for {
+		select {
+		case event := <-sub:
+			w.Write([]byte("data: "))
+			data, err := json.Marshal(event)
+			if err != nil {
+				log.Printf("Error marshalling event: %s\n", err)
+				return
+			}
+			w.Write(data)
+			w.Write([]byte("\n\n"))
+			w.(http.Flusher).Flush()
+		case <-r.Context().Done():
+			log.Printf("Subscriber with id %s disconnected\n", id)
+			return
+		}
+	}
+}
+
+func (a *App) HandleOpenFile(w http.ResponseWriter, r *http.Request) {
+	var event Event
+	err := json.NewDecoder(r.Body).Decode(&event)
+	if err != nil {
+		log.Printf("Error decoding request body: %s\n", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	a.openFile(event.File, event.Line, event.Column)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (a *App) ProxyToCodeServer(w http.ResponseWriter, r *http.Request) {
@@ -92,8 +167,10 @@ func (app *App) makeCodeServerRouter() chi.Router {
 func (app *App) makeFrontendRouter() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/workspace", app.RedirectToWorkspace)
-	r.Get("/__api__/workspaces", app.HandleGetWorkspaces)
-	r.Delete("/__api__/workspace", app.HandleDeleteWorkspace)
+	r.Get("/api/workspaces", app.HandleGetWorkspaces)
+	r.Post("/api/open-file", app.HandleOpenFile)
+	r.Delete("/api/workspace", app.HandleDeleteWorkspace)
+	r.Get("/api/listen-open-file", app.ListenOpenFileSSE)
 	r.NotFound(app.ProxyToFrontend)
 	return r
 }

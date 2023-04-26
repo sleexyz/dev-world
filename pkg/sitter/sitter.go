@@ -28,6 +28,18 @@ func CreateNewSitter() *Sitter {
 	}
 }
 
+func (s *Sitter) GetWorkspaceForFile(file string) *workspace.Workspace {
+	s.workspaceMapMu.Lock()
+	defer s.workspaceMapMu.Unlock()
+	for _, ws := range s.workspaceMap {
+		// Return workspace if the file is a subpath of the workspace path
+		if len(file) >= len(ws.Path) && file[:len(ws.Path)] == ws.Path {
+			return ws
+		}
+	}
+	return nil
+}
+
 func (s *Sitter) GetWorkspaces() []string {
 	s.workspaceMapMu.Lock()
 	defer s.workspaceMapMu.Unlock()
