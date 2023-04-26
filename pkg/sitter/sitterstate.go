@@ -3,14 +3,18 @@ package sitter
 import (
 	"encoding/json"
 	"os"
-
-	"github.com/sleexyz/dev-world/pkg/workspace"
 )
 
 var sitterStatePath = os.Getenv("TMPDIR") + "/dev-world-state.json"
 
 type SitterState struct {
-	WorkspaceMap map[string]*workspace.Workspace `json:"workspaceMap"`
+	Workspaces map[string]*WorkspaceState `json:"workspaces"`
+}
+
+type WorkspaceState struct {
+	Path   string `json:"path"`
+	Socket string `json:"socket"`
+	Pid    int    `json:"pid"`
 }
 
 func LoadSitterState() *SitterState {
