@@ -12,9 +12,10 @@ type SitterState struct {
 }
 
 type WorkspaceState struct {
-	Path   string `json:"path"`
-	Socket string `json:"socket"`
-	Pid    int    `json:"pid"`
+	Path         string `json:"path"`
+	Socket       string `json:"socket"`
+	VscodeSocket string `json:"vscodeSocket"`
+	Pid          int    `json:"pid"`
 }
 
 func LoadSitterState() *SitterState {

@@ -17,6 +17,7 @@ func LoadSitter() *Sitter {
 	for _, ws := range sitterState.Workspaces {
 		w, err := sitter.restoreWorkspace(context.Background(), ws)
 		if err != nil {
+			log.Printf("Failed to reconnect to workspace at %s: %v\n", ws.Path, err)
 			continue
 		}
 		log.Printf("Reconnected to workspace at %s\n", ws.Path)
@@ -57,18 +58,31 @@ func (s *Sitter) SaveSitter() {
 	SitterState.Workspaces = make(map[string]*WorkspaceState)
 	for _, ws := range s.workspaceMap {
 		SitterState.Workspaces[ws.Path] = &WorkspaceState{
-			Path:   ws.Path,
-			Socket: ws.Socket,
-			Pid:    ws.Process.Pid,
+			Path:         ws.Path,
+			Socket:       ws.Socket,
+			VscodeSocket: ws.VscodeSocket,
+			Pid:          ws.Process.Pid,
 		}
 	}
 	SaveSitterState(&SitterState)
 }
 
 func (s *Sitter) restoreWorkspace(ctx context.Context, ws *WorkspaceState) (*workspace.Workspace, error) {
-	// Check if the socket exists
+	// Check if the socket exists and is ready
 	_, err := os.Stat(ws.Socket)
 	if err != nil {
+		return nil, err
+	}
+	if err := workspace.WaitForSocket(ctx, ws.Socket); err != nil {
+		return nil, err
+	}
+
+	// Check if the vscode socket exists and is ready
+	_, err = os.Stat(ws.VscodeSocket)
+	if err != nil {
+		return nil, err
+	}
+	if err := workspace.WaitForSocket(ctx, ws.VscodeSocket); err != nil {
 		return nil, err
 	}
 
@@ -79,14 +93,10 @@ func (s *Sitter) restoreWorkspace(ctx context.Context, ws *WorkspaceState) (*wor
 	}
 
 	w := &workspace.Workspace{
-		Path:    ws.Path,
-		Socket:  ws.Socket,
-		Process: process,
-	}
-
-	// Check that socket is still alive
-	if err := w.WaitForSocket(ctx); err != nil {
-		return nil, err
+		Path:         ws.Path,
+		Socket:       ws.Socket,
+		VscodeSocket: ws.VscodeSocket,
+		Process:      process,
 	}
 
 	return w, nil
