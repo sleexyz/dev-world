@@ -152,7 +152,7 @@ func main() {
 			defer clientConn.Close()
 			_, err := io.Copy(conn, clientConn)
 			if err != nil {
-				log.Println(err)
+				log.Printf("Error copying to client: %s\n", err)
 			}
 		}()
 		go func() {
@@ -160,7 +160,7 @@ func main() {
 			defer clientConn.Close()
 			_, err := io.Copy(clientConn, conn)
 			if err != nil {
-				log.Println(err)
+				log.Printf("Error copying to server: %s\n", err)
 			}
 		}()
 	}
@@ -172,13 +172,20 @@ func main() {
 
 	m := cmux.New(l)
 	httpsL := m.Match(cmux.TLS())
-	httpL := m.Match(cmux.HTTP1Fast())
+	httpL := m.Match(cmux.Any())
 
-	httpS := &http.Server{
-		Handler: router,
+	httpServer := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Redirect to HTTPS:
+			target := "https://" + r.Host + r.URL.Path
+			if len(r.URL.RawQuery) > 0 {
+				target += "?" + r.URL.RawQuery
+			}
+			log.Printf("Redirecting to %s\n", target)
+			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+		}),
 	}
-	httpsS := &http.Server{
-		// Addr: ":" + port,
+	httpsServer := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodConnect {
 				log.Printf("Handling CONNECT request for %s\n", r.Host)
@@ -197,13 +204,13 @@ func main() {
 
 	log.Printf("Listening on port %s\n", port)
 	go func() {
-		err := httpsS.ServeTLS(httpsL, "localhost+4.pem", "localhost+4-key.pem")
+		err := httpServer.Serve(httpL)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}()
 	go func() {
-		err := httpS.Serve(httpL)
+		err := httpsServer.ServeTLS(httpsL, "localhost+4.pem", "localhost+4-key.pem")
 		if err != nil {
 			log.Fatal(err)
 		}
