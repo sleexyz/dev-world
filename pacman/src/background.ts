@@ -1,7 +1,8 @@
 interface ProxyEntry {
+  protocol: string;
   host: string;
+  type: string;
   destination: string;
-  type: "HTTP" | "HTTPS";
   extensionId: string;
 }
 
@@ -9,24 +10,28 @@ class ProxyManager {
   static instance: ProxyManager = new ProxyManager();
 
   // alias -> ProxyEntry
-  constructor(readonly entries: Map<string, ProxyEntry> = new Map()) {}
+  constructor(readonly entries: Record<string, ProxyEntry> = {}) {}
 
   private generatePacScript(): string {
     return `
 function FindProxyForURL(url, host) {
-  const data = ${JSON.stringify(Array.from(this.entries.values()), null, 2)};
-  for (const entry of data) {
-    if (host == entry.host) {
-      return entry.type + ' ' + entry.destination;
-    }
+  const data = ${JSON.stringify(this.entries, null, 2)};
+  const protocol = url.substring(0, url.indexOf(':'));
+  let entry = data[protocol + '://' + host];
+  if (entry) {
+    return entry.type + ' ' + entry.destination;
   }
   return 'DIRECT';
 }
 `;
   }
 
+  static makeEntryKey(protocol: string, host: string) {
+    return `${protocol}://${host}`;
+  }
   addEntry(entry: ProxyEntry) {
-    this.entries.set(entry.host, entry);
+    const key = ProxyManager.makeEntryKey(entry.protocol, entry.host)
+    this.entries[key] =  entry;
     this.applySettings();
   }
 
@@ -50,7 +55,7 @@ function FindProxyForURL(url, host) {
   load() {
     chrome.storage.local.get("entries", (result) => {
       if (result.entries) {
-        for (const entry of result.entries) {
+        for (const entry of Object.values(result.entries as Record<string, ProxyEntry>)) {
           this.addEntry(entry);
         }
       }
@@ -58,7 +63,7 @@ function FindProxyForURL(url, host) {
   }
 
   save() {
-    chrome.storage.local.set({ entries: Array.from(this.entries.values()) });
+    chrome.storage.local.set({ entries: this.entries });
   }
 }
 
@@ -70,23 +75,24 @@ chrome.runtime.onInstalled.addListener(() => {
 
 
 interface SetProxyRequest {
+  protocol: string;
   host: string;
+  type: string;
   destination: string;
-  type: "HTTP" | "HTTPS";
 }
 
-type SetProxyResponse = boolean;
+export type SetProxyResponse = boolean;
 
 chrome.runtime.onMessageExternal.addListener(
   (request, sender, sendResponse) => {
     if (request.setProxyRequest) {
-      const { host, destination, type } = request.setProxyRequest as SetProxyRequest;
+      const { protocol, host, type, destination } = request.setProxyRequest as SetProxyRequest;
       const { id: extensionId } = sender;
       if (!extensionId) {
         sendResponse({ setProxyResponse: false });
         return;
       }
-      ProxyManager.instance.addEntry({ host, destination, type, extensionId });
+      ProxyManager.instance.addEntry({ protocol, host, type, destination, extensionId });
       ProxyManager.instance.save();
       sendResponse({ setProxyResponse: true });
     }
