@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -18,12 +17,13 @@ import (
 func InitializeSitter() *Sitter {
 	sitter := CreateNewSitter()
 	pattern := regexp.MustCompile(`code-server-(.+)\.sock`)
-	files, err := ioutil.ReadDir("/tmp")
+	files, err := os.ReadDir("/tmp")
 	if err != nil {
 		panic(err)
 	}
 	for _, file := range files {
-		if file.IsDir() || (file.Mode()&os.ModeSocket) == 0 {
+		info, err := file.Info()
+		if err != nil || file.IsDir() || (info.Mode()&os.ModeSocket) == 0 {
 			continue
 		}
 		if matches := pattern.FindStringSubmatch(file.Name()); len(matches) > 0 {
