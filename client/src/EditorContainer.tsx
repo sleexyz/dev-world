@@ -4,10 +4,6 @@ import { useMatch } from "react-router-dom";
 export function EditorContainer() {
   const alias = useMatch("/:alias")?.params.alias;
 
-  useEffect(() => {
-    document.title = `dev/${alias}`;
-  }, []);
-
   return (
     <>
       <iframe

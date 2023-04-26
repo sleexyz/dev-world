@@ -47,7 +47,7 @@ function Workspace({ path }: { path: string }) {
   return (
     <div className="flex justify-between">
       <Link to={link}>
-        <h2><span className="opacity-20">dev/</span>{alias}</h2>
+        <h2><span className="opacity-20">{window.location.host}/</span>{alias}</h2>
       </Link>
       <ActiveLinkMenu path={path} />
     </div>
