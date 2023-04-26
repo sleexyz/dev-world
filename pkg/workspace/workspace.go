@@ -14,12 +14,13 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"time"
 )
 
 type Workspace struct {
-	Path    string `json:"path"`
-	Socket  string `json:"socket"`
+	Path    string
+	Socket  string
 	Process *os.Process
 }
 
@@ -84,8 +85,16 @@ func (workspace *Workspace) Close() {
 	os.Remove(workspace.Socket)
 }
 
-func CreateKeyFromFolder(folder string) string {
-	return base64.StdEncoding.EncodeToString([]byte(folder))
+func CreateKeyFromPath(path string) string {
+	return base64.StdEncoding.EncodeToString([]byte(path))
+}
+
+func DecodePathFromKey(key string) (string, error) {
+	decoded, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		return "", err
+	}
+	return string(decoded), nil
 }
 
 func (w *Workspace) OpenFile(file string, line int, column int) {
@@ -160,6 +169,15 @@ func CreateWorkspace(ctx context.Context, path string) *Workspace {
 }
 
 func GetCodeServerSocketPath(folder string) string {
-	key := CreateKeyFromFolder(folder)
+	key := CreateKeyFromPath(folder)
 	return fmt.Sprintf("%scode-server-%s.sock", os.TempDir(), key)
+}
+
+func GetFolderFromSocketPath(socketPath string) (string, error) {
+	pattern := regexp.MustCompile(`code-server-(.+)\.sock$`)
+	matches := pattern.FindStringSubmatch(socketPath)
+	if len(matches) != 2 {
+		return "", fmt.Errorf("invalid socket path: %s", socketPath)
+	}
+	return DecodePathFromKey(matches[1])
 }

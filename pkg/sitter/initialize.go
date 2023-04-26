@@ -17,15 +17,45 @@ func LoadSitter() *Sitter {
 	sitter := CreateNewSitter()
 	sitterState := LoadSitterState()
 
-	// Attempt reconnection to existing workspaces, and then re-save the sitter state.
-	for _, ws := range sitterState.WorkspaceMap {
-		ws, err := sitter.reconnectToWorkspace(context.Background(), ws.Path)
+	// Attempt reconnection to existing workspaces, and then re-save the sitter state
+	for _, ws := range sitterState.Workspaces {
+		w, err := sitter.reconnectToWorkspace(context.Background(), ws)
+		// If we fail to reconnect to a workspace, remove the stale socket
 		if err != nil {
-			cleanupDeadWorkspace(ws.Path)
+			codeServerSocketPath := workspace.GetCodeServerSocketPath(ws.Path)
+			err := os.Remove(codeServerSocketPath)
+			if err != nil {
+				log.Fatalf("Failed to remove existing socket: %v", err)
+			}
+			log.Printf("Removed stale socket at %s\n", ws.Path)
 		}
-		sitter.addWorkspace(ws)
+		sitter.addWorkspace(w)
 	}
 	sitter.SaveSitter()
+
+	// Clean up any stale sockets. This is necessary so that we can create fresh sockets
+	// without overlap.
+	dirEntries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		log.Fatalf("Failed to read temp dir: %v", err)
+	}
+	for _, dirEntry := range dirEntries {
+		if err != nil || dirEntry.IsDir() {
+			continue
+		}
+		path, err := workspace.GetFolderFromSocketPath(dirEntry.Name())
+		if err != nil {
+			continue
+		}
+		if sitter.workspaceMap[path] == nil {
+			log.Printf("Removing stale socket at %s\n", dirEntry.Name())
+			socketPath := os.TempDir() + dirEntry.Name()
+			err := os.Remove(socketPath)
+			if err != nil {
+				log.Fatalf("Failed to remove existing socket: %v", err)
+			}
+		}
+	}
 
 	return sitter
 }
@@ -33,23 +63,19 @@ func LoadSitter() *Sitter {
 // Saves the sitter state to disk
 func (s *Sitter) SaveSitter() {
 	var SitterState SitterState
-	SitterState.WorkspaceMap = make(map[string]*workspace.Workspace)
+	SitterState.Workspaces = make(map[string]*WorkspaceState)
 	for _, ws := range s.workspaceMap {
-		SitterState.WorkspaceMap[ws.Path] = ws
+		SitterState.Workspaces[ws.Path] = &WorkspaceState{
+			Path:   ws.Path,
+			Socket: ws.Socket,
+			Pid:    ws.Process.Pid,
+		}
 	}
 	SaveSitterState(&SitterState)
 }
 
-func cleanupDeadWorkspace(path string) {
-	codeServerSocketPath := workspace.GetCodeServerSocketPath(path)
-	if err := os.Remove(codeServerSocketPath); err != nil {
-		log.Fatalf("Failed to remove existing socket: %v", err)
-	}
-	log.Printf("Removed stale socket at %s\n", path)
-}
-
-func (s *Sitter) reconnectToWorkspace(ctx context.Context, path string) (*workspace.Workspace, error) {
-	codeServerSocketPath := workspace.GetCodeServerSocketPath(path)
+func (s *Sitter) reconnectToWorkspace(ctx context.Context, ws *WorkspaceState) (*workspace.Workspace, error) {
+	codeServerSocketPath := workspace.GetCodeServerSocketPath(ws.Path)
 
 	_, err := os.Stat(codeServerSocketPath)
 	if err != nil {
@@ -62,17 +88,17 @@ func (s *Sitter) reconnectToWorkspace(ctx context.Context, path string) (*worksp
 	}
 
 	// If the socket already exists, try to reconnect to it
-	workspace := &workspace.Workspace{
-		Path:    path,
+	w := &workspace.Workspace{
+		Path:    ws.Path,
 		Socket:  codeServerSocketPath,
 		Process: process,
 	}
-	err = workspace.WaitForSocket(ctx)
+	err = w.WaitForSocket(ctx)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("Reconnecting to existing socket for %s\n", path)
-	return workspace, nil
+	log.Printf("Reconnecting to existing socket for %s\n", ws.Path)
+	return w, nil
 }
 
 func getCodeServerProcess(ctx context.Context, socketPath string) (*os.Process, error) {
