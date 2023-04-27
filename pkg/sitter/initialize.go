@@ -2,16 +2,27 @@ package sitter
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 
 	"github.com/sleexyz/dev-world/pkg/workspace"
 )
 
+var (
+	skipReconnectionFlag = flag.Bool("skip-reconnection", false, "Skip reconnection to existing workspaces")
+)
+
 // Loads the sitter state from disk and reconnects to any existing workspaces
 func LoadSitter() *Sitter {
 	sitter := CreateNewSitter()
-	sitterState := LoadSitterState()
+	var sitterState *SitterState
+	if *skipReconnectionFlag {
+		log.Println("Skipping reconnection to existing workspaces")
+		sitterState = &SitterState{}
+	} else {
+		sitterState = LoadSitterState()
+	}
 
 	// Attempt reconnection to existing workspaces, and then re-save the sitter state
 	for _, ws := range sitterState.Workspaces {

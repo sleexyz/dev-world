@@ -10,9 +10,17 @@ import (
 	"time"
 )
 
-var (
-	serveFlags = flag.String("serve-flags", "", "flags to pass to serve")
-)
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return "my string representation"
+}
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
+var serveFlag arrayFlags
 
 var logger = log.New(os.Stdout, "", log.LstdFlags)
 
@@ -21,6 +29,7 @@ type State struct {
 }
 
 func main() {
+	flag.Var(&serveFlag, "serve-flag", "flag to pass to serve")
 	flag.Parse()
 
 	freeUpPort(12345)
@@ -64,7 +73,7 @@ func runClientDevServer(state *State) {
 // Continuously run the program.
 func runServe(state *State) {
 	loop(func() {
-		cmd := exec.Command("bin/serve", *serveFlags)
+		cmd := exec.Command("bin/serve", serveFlag...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		logger.Println("Starting process.")
