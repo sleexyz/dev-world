@@ -21,7 +21,7 @@ func LoadSitter() *Sitter {
 			continue
 		}
 		log.Printf("Reconnected to workspace at %s\n", ws.Path)
-		sitter.addWorkspace(w)
+		sitter.workspaceMap[ws.Path] = w
 	}
 	sitter.SaveSitter()
 

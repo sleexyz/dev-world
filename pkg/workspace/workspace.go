@@ -5,17 +5,20 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
 	"time"
+)
+
+var (
+	localCodeServerFlag = flag.Bool("local-code-server", false, "use local code-server instead of system code-server")
 )
 
 type Workspace struct {
@@ -103,6 +106,7 @@ func (w *Workspace) OpenFile(file string, line int, column int) {
 
 	jsonData, err := json.Marshal(map[string]interface{}{
 		"type":             "open",
+		"folderURIs":       []string{},
 		"fileURIs":         []string{fileURI},
 		"forceReuseWindow": true,
 		"gotoLineMode":     true,
@@ -114,18 +118,14 @@ func (w *Workspace) OpenFile(file string, line int, column int) {
 	httpc := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				// TODO: write to the vscode-ipc socket instead of the code-server socket.
-				return net.Dial("unix", w.Socket)
+				return net.Dial("unix", w.VscodeSocket)
 			},
 		},
 	}
-	resp, err := httpc.Do(&http.Request{
-		Method: "POST",
-		URL:    &url.URL{Scheme: "http", Host: "unix", Path: "/"},
-		Body:   io.NopCloser(bytes.NewReader(jsonData)),
-	})
+	resp, err := httpc.Post("http://unix/", "application/json", bytes.NewReader(jsonData))
 	if err != nil {
-		log.Fatalln("Error sending request:", err)
+		log.Printf("Error sending JSON to server: %v\n", err)
+		return
 	}
 
 	// Print response:
@@ -134,7 +134,6 @@ func (w *Workspace) OpenFile(file string, line int, column int) {
 		log.Fatalln("Error dumping response:", err)
 	}
 	log.Printf("Response: %s\n", respData)
-
 	defer resp.Body.Close()
 }
 
@@ -146,11 +145,24 @@ func CreateWorkspace(ctx context.Context, path string) *Workspace {
 		log.Fatalln("Error creating socket:", err)
 	}
 
-	// Start a new child process for the folder
-	cmd := exec.Command("code-server", "--socket", codeServerSocketPath, path)
-	// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	var cmd *exec.Cmd
+	if *localCodeServerFlag {
+		cmd = exec.Command(
+			"node",
+			os.Getenv("HOME")+"/code-server/release/out/node/entry.js",
+			fmt.Sprintf("--socket=%s", codeServerSocketPath),
+			path,
+		)
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+	} else {
+		cmd = exec.Command("code-server", "--socket", codeServerSocketPath, path)
+		// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+	}
+
+	// oldVscodeSocketPath := GetVscodeSocketPath()
 	if err := cmd.Start(); err != nil {
 		log.Fatalf("Failed to start child process: %v", err)
 	}
@@ -162,8 +174,16 @@ func CreateWorkspace(ctx context.Context, path string) *Workspace {
 	// HACK: We determine the vscode-ipc socket path by reading $TMPDIR/vscode-ipc
 	// directly after creating the new code-server process. This may be prone to
 	// race conditions.
-	vscodeSocketPath := GetVscodeSocketPath()
-	log.Printf("vscode-ipc socket path: %s\n", vscodeSocketPath)
+	var vscodeSocketPath string
+	// for {
+	// 	vscodeSocketPath := GetVscodeSocketPath()
+	// 	log.Printf("vscode-ipc socket path: %s\n", vscodeSocketPath)
+	// 	if vscodeSocketPath != oldVscodeSocketPath {
+	// 		break
+	// 	}
+	// 	time.Sleep(100 * time.Millisecond)
+	// }
+	// log.Printf("vscode-ipc socket path: %s\n", vscodeSocketPath)
 
 	workspace := &Workspace{
 		Path:         path,

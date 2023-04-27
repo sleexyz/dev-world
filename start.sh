@@ -1,4 +1,4 @@
 #!/bin/bash
 
 ./build.sh
-go run ./updater
+go run ./updater $@

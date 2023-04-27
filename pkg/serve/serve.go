@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
+	"flag"
 	"io"
 	"log"
 	"net"
@@ -176,6 +177,7 @@ func (app *App) makeFrontendRouter() chi.Router {
 }
 
 func main() {
+	flag.Parse()
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
