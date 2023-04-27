@@ -168,8 +168,7 @@ func CreateWorkspace(ctx context.Context, path string) *Workspace {
 		cmd.Stderr = nil
 	}
 
-	// oldVscodeSocketPath := GetVscodeSocketPath()
-	if err := cmd.Start(); err != nil {
+	if err = cmd.Start(); err != nil {
 		log.Fatalf("Failed to start child process: %v", err)
 	}
 
@@ -177,28 +176,40 @@ func CreateWorkspace(ctx context.Context, path string) *Workspace {
 	if err != nil {
 		log.Printf("Failed health check for child process: %v", err)
 	}
-	// HACK: We determine the vscode-ipc socket path by reading $TMPDIR/vscode-ipc
-	// directly after creating the new code-server process. This may be prone to
-	// race conditions.
-	var vscodeSocketPath string
-	// for {
-	// 	vscodeSocketPath := GetVscodeSocketPath()
-	// 	log.Printf("vscode-ipc socket path: %s\n", vscodeSocketPath)
-	// 	if vscodeSocketPath != oldVscodeSocketPath {
-	// 		break
-	// 	}
-	// 	time.Sleep(100 * time.Millisecond)
-	// }
-	// log.Printf("vscode-ipc socket path: %s\n", vscodeSocketPath)
 
-	workspace := &Workspace{
-		Path:         path,
-		Socket:       codeServerSocketPath,
-		VscodeSocket: vscodeSocketPath,
-		Process:      cmd.Process,
+	// Do not block on vscode socket creation
+	w := &Workspace{
+		Path:    path,
+		Socket:  codeServerSocketPath,
+		Process: cmd.Process,
 	}
 
-	return workspace
+	return w
+}
+
+// Wait for a minute before timing out.
+func WaitForVscodeSocket(pid int) chan string {
+	doneChan := make(chan string)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+
+		for {
+			vscodeSocketPath, err := GetVscodeSocketPath(pid)
+			if err == nil {
+				doneChan <- vscodeSocketPath
+				close(doneChan)
+				break
+			}
+			select {
+			case <-ctx.Done():
+				log.Fatalln("Timed out waiting for vscode-ipc socket path")
+			case <-time.After(5 * time.Second):
+				continue
+			}
+		}
+	}()
+	return doneChan
 }
 
 func GetCodeServerSocketPath(folder string) string {
@@ -207,12 +218,12 @@ func GetCodeServerSocketPath(folder string) string {
 }
 
 // Reads the vscode-ipc socket path from $TMPDIR/vscode-ipc
-func GetVscodeSocketPath() string {
-	b, err := os.ReadFile(os.TempDir() + "vscode-ipc")
+func GetVscodeSocketPath(pid int) (string, error) {
+	b, err := os.ReadFile(fmt.Sprintf("%svscode-ipc-%d", os.TempDir(), pid))
 	if err != nil {
-		log.Fatalf("Failed to read vscode-ipc socket path: %v", err)
+		return "", err
 	}
-	return string(b)
+	return string(b), nil
 }
 
 func GetFolderFromSocketPath(socketPath string) (string, error) {
