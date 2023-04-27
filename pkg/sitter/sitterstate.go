@@ -19,7 +19,7 @@ type WorkspaceState struct {
 }
 
 func LoadSitterState() *SitterState {
-	var SitterState SitterState
+	var ss SitterState
 
 	if _, err := os.Stat(sitterStatePath); err == nil {
 		f, err := os.Open(sitterStatePath)
@@ -27,12 +27,12 @@ func LoadSitterState() *SitterState {
 			panic(err)
 		}
 		defer f.Close()
-		if err := json.NewDecoder(f).Decode(&SitterState); err != nil {
+		if err := json.NewDecoder(f).Decode(&ss); err != nil {
 			panic(err)
 		}
 	}
 
-	return &SitterState
+	return &ss
 }
 
 func SaveSitterState(sitterState *SitterState) {
