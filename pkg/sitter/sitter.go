@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/sleexyz/dev-world/pkg/workspace"
 )
@@ -105,9 +106,17 @@ func (s *Sitter) GetOrCreateWorkspace(w http.ResponseWriter, r *http.Request) (*
 		})
 	}
 
-	ws, err := s.GetWorkspace(r.Context(), path)
+	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(5*time.Second))
+	defer cancel()
+
+	ws, err := s.GetWorkspace(ctx, path)
 	if err != nil {
-		ws = workspace.CreateWorkspace(r.Context(), path)
+		ws = workspace.CreateWorkspace(ctx, path)
+		go func() {
+			ws.VscodeSocket = <-workspace.WaitForVscodeSocket(ws.Process.Pid)
+			s.SaveSitter()
+		}()
+
 		s.addWorkspace(ws)
 		s.workspaceMap[ws.Path] = ws
 		s.SaveSitter()
