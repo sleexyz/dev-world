@@ -65,17 +65,17 @@ func LoadSitter() *Sitter {
 
 // Saves the sitter state to disk
 func (s *Sitter) SaveSitter() {
-	var SitterState SitterState
-	SitterState.Workspaces = make(map[string]*WorkspaceState)
+	var ss SitterState
+	ss.Workspaces = make(map[string]*WorkspaceState)
 	for _, ws := range s.workspaceMap {
-		SitterState.Workspaces[ws.Path] = &WorkspaceState{
+		ss.Workspaces[ws.Path] = &WorkspaceState{
 			Path:         ws.Path,
 			Socket:       ws.Socket,
 			VscodeSocket: ws.VscodeSocket,
 			Pid:          ws.Process.Pid,
 		}
 	}
-	SaveSitterState(&SitterState)
+	SaveSitterState(&ss)
 }
 
 func (s *Sitter) restoreWorkspace(ctx context.Context, ws *WorkspaceState) (*workspace.Workspace, error) {
@@ -84,7 +84,7 @@ func (s *Sitter) restoreWorkspace(ctx context.Context, ws *WorkspaceState) (*wor
 	if err != nil {
 		return nil, err
 	}
-	if err := workspace.WaitForSocket(ctx, ws.Socket); err != nil {
+	if err = workspace.WaitForSocket(ctx, ws.Socket); err != nil {
 		return nil, err
 	}
 
@@ -93,7 +93,7 @@ func (s *Sitter) restoreWorkspace(ctx context.Context, ws *WorkspaceState) (*wor
 	if err != nil {
 		return nil, err
 	}
-	if err := workspace.WaitForSocket(ctx, ws.VscodeSocket); err != nil {
+	if err = workspace.WaitForSocket(ctx, ws.VscodeSocket); err != nil {
 		return nil, err
 	}
 
