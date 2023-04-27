@@ -95,7 +95,6 @@ func (s *Sitter) GetOrCreateWorkspace(w http.ResponseWriter, r *http.Request) (*
 	if err != nil {
 		ws = workspace.CreateWorkspace(r.Context(), path)
 		s.addWorkspace(ws)
-		s.SaveSitter()
 	}
 
 	if cookie == nil {
@@ -128,6 +127,7 @@ func (sitter *Sitter) addWorkspace(workspace *workspace.Workspace) {
 	sitter.workspaceMapMu.Lock()
 	defer sitter.workspaceMapMu.Unlock()
 	sitter.workspaceMap[workspace.Path] = workspace
+	sitter.SaveSitter()
 	log.Printf("Added workspace: %s \n", workspace.Path)
 }
 
@@ -136,6 +136,10 @@ func (sitter *Sitter) deleteWorkspace(workspace *workspace.Workspace) {
 	defer sitter.workspaceMapMu.Unlock()
 	workspace.Close()
 	delete(sitter.workspaceMap, workspace.Path)
+	sitter.SaveSitter()
+
+	workspace.Process.Kill()
+
 	log.Printf("Deleted workspace: %s \n", workspace.Path)
 }
 

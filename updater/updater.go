@@ -2,11 +2,16 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"time"
+)
+
+var (
+	serveFlags = flag.String("serve-flags", "", "flags to pass to serve")
 )
 
 var logger = log.New(os.Stdout, "", log.LstdFlags)
@@ -16,6 +21,8 @@ type State struct {
 }
 
 func main() {
+	flag.Parse()
+
 	freeUpPort(12345)
 	freeUpPort(12344)
 	logger.SetPrefix("\033[33m[updater] \033[0m") // yellow
@@ -26,7 +33,7 @@ func main() {
 		runClientDevServer(state)
 	}()
 	go func() {
-		runProgram(state)
+		runServe(state)
 	}()
 	go func() {
 		runUpdater(state.shouldUpdateChan)
@@ -55,10 +62,9 @@ func runClientDevServer(state *State) {
 }
 
 // Continuously run the program.
-func runProgram(state *State) {
+func runServe(state *State) {
 	loop(func() {
-		cmd := exec.Command("bin/serve")
-		// cmd := exec.Command("go", "run", "pkg/serve/serve.go")
+		cmd := exec.Command("bin/serve", *serveFlags)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		logger.Println("Starting process.")
