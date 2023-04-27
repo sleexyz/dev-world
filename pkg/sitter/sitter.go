@@ -80,42 +80,44 @@ func (s *Sitter) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Sitter) GetOrCreateWorkspace(w http.ResponseWriter, r *http.Request) (*workspace.Workspace, error) {
-	var path string
-	// Get the folder from either the query string or the cookie
-	cookie, err := r.Cookie(WORKSPACE_PATH_COOKIE)
-	path = r.URL.Query().Get("folder")
-	if cookie != nil && path == "" {
-		path = cookie.Value
-	} else if path == "" {
-		http.Error(w, "Could not determine folder", http.StatusBadRequest)
-		return nil, err
+	s.workspaceMapMu.Lock()
+	defer s.workspaceMapMu.Unlock()
+
+	// Get the path from the query string, or the cookie.
+	// The query string takes precedence.
+	cookie, _ := r.Cookie(WORKSPACE_PATH_COOKIE)
+	path := r.URL.Query().Get("folder")
+	if path == "" {
+		if cookie != nil {
+			path = cookie.Value
+		} else {
+			http.Error(w, "Could not determine folder", http.StatusBadRequest)
+			return nil, fmt.Errorf("could not determine folder")
+		}
+	} else {
+		http.SetCookie(w, &http.Cookie{
+			Name:     WORKSPACE_PATH_COOKIE,
+			Value:    path,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+			Secure:   true,
+		})
 	}
 
 	ws, err := s.GetWorkspace(r.Context(), path)
 	if err != nil {
 		ws = workspace.CreateWorkspace(r.Context(), path)
 		s.addWorkspace(ws)
-	}
-
-	if cookie == nil {
-		cookie := http.Cookie{
-			Name:     WORKSPACE_PATH_COOKIE,
-			Value:    ws.Path,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		}
-		http.SetCookie(w, &cookie)
+		s.workspaceMap[ws.Path] = ws
+		s.SaveSitter()
+		log.Printf("Added workspace: %s \n", ws.Path)
 	}
 
 	return ws, nil
 }
 
 func (s *Sitter) GetWorkspace(ctx context.Context, path string) (*workspace.Workspace, error) {
-	s.workspaceMapMu.Lock()
-	defer s.workspaceMapMu.Unlock()
-
 	if workspace, ok := s.workspaceMap[path]; ok {
 		return workspace, nil
 	}
@@ -124,26 +126,19 @@ func (s *Sitter) GetWorkspace(ctx context.Context, path string) (*workspace.Work
 }
 
 func (sitter *Sitter) addWorkspace(workspace *workspace.Workspace) {
-	sitter.workspaceMapMu.Lock()
-	defer sitter.workspaceMapMu.Unlock()
-	sitter.workspaceMap[workspace.Path] = workspace
-	sitter.SaveSitter()
-	log.Printf("Added workspace: %s \n", workspace.Path)
 }
 
 func (sitter *Sitter) deleteWorkspace(workspace *workspace.Workspace) {
-	sitter.workspaceMapMu.Lock()
-	defer sitter.workspaceMapMu.Unlock()
 	workspace.Close()
 	delete(sitter.workspaceMap, workspace.Path)
 	sitter.SaveSitter()
-
-	workspace.Process.Kill()
 
 	log.Printf("Deleted workspace: %s \n", workspace.Path)
 }
 
 func (s *Sitter) DeleteWorkspace(path string) error {
+	s.workspaceMapMu.Lock()
+	defer s.workspaceMapMu.Unlock()
 	ws, err := s.GetWorkspace(context.Background(), path)
 	if err != nil {
 		return err
