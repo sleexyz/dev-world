@@ -86,6 +86,12 @@ func WaitForSocket(ctx context.Context, socket string) error {
 
 func (workspace *Workspace) Close() {
 	workspace.Process.Kill()
+	st, err := workspace.Process.Wait()
+	if err != nil {
+		log.Println("Error waiting for process to exit:", err)
+	}
+	log.Printf("Workspace exited with status %d\n", st.ExitCode())
+
 	os.Remove(workspace.Socket)
 }
 
