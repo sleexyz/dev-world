@@ -203,7 +203,9 @@ func WaitForVscodeSocket(pid int) chan string {
 			}
 			select {
 			case <-ctx.Done():
-				log.Fatalln("Timed out waiting for vscode-ipc socket path")
+				log.Println("Timed out waiting for vscode-ipc socket path")
+				close(doneChan)
+				return
 			case <-time.After(5 * time.Second):
 				continue
 			}
