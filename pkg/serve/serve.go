@@ -270,7 +270,8 @@ func main() {
 				log.Printf("Handling CONNECT request for %s\n", r.Host)
 				connectHandler(w, r)
 			} else {
-				log.Printf("Handling %s request for %s\n", r.Method, r.URL.Path)
+				cookie, _ := r.Cookie(sitter.WORKSPACE_PATH_COOKIE)
+				log.Printf("Handling %s request for %s%s?%s\n (Cookie: %s)", r.Method, r.Host, r.URL.Path, r.URL.RawQuery, cookie)
 				router.ServeHTTP(w, r)
 			}
 		}),
