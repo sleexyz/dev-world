@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"io"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/hostrouter"
 	"github.com/google/uuid"
 	"github.com/sleexyz/dev-world/pkg/sitter"
 	"github.com/soheilhy/cmux"
@@ -23,7 +21,7 @@ import (
 
 var (
 	certFileFlag = flag.String("cert-file", "cert.pem", "path to cert file")
-	keyFileFlag = flag.String("key-file", "key.pem", "path to key file")
+	keyFileFlag  = flag.String("key-file", "key.pem", "path to key file")
 )
 
 type Event struct {
@@ -161,13 +159,7 @@ func (a *App) RedirectToWorkspace(w http.ResponseWriter, r *http.Request) {
 	r.URL.Query().Get("alias")
 	path := filepath.Join(home, r.URL.Query().Get("alias"))
 	log.Printf("Redirecting to %s\n", path)
-	http.Redirect(w, r, "https://localhost:12345?folder="+path, http.StatusTemporaryRedirect)
-}
-
-func (app *App) makeCodeServerRouter() chi.Router {
-	r := chi.NewRouter()
-	r.NotFound(app.ProxyToCodeServer)
-	return r
+	http.Redirect(w, r, "/ws/?folder="+path, http.StatusTemporaryRedirect)
 }
 
 func (app *App) makeFrontendRouter() chi.Router {
@@ -177,6 +169,7 @@ func (app *App) makeFrontendRouter() chi.Router {
 	r.Post("/api/open-file", app.HandleOpenFile)
 	r.Delete("/api/workspace", app.HandleDeleteWorkspace)
 	r.Get("/api/listen-open-file", app.ListenOpenFileSSE)
+	r.Mount("/ws", http.HandlerFunc(app.ProxyToCodeServer))
 	r.NotFound(app.ProxyToFrontend)
 	return r
 }
@@ -196,18 +189,12 @@ func main() {
 	}
 
 	app := createApp()
-	hr := hostrouter.New()
-
-	codeServerRouter := app.makeCodeServerRouter()
-	frontendRouter := app.makeFrontendRouter()
-	hr.Map("localhost:12345", frontendRouter)
-	hr.Map("dev.localhost:12345", codeServerRouter)
-	hr.Map("d", frontendRouter)
-	hr.Map("dev", frontendRouter)
 
 	router := chi.NewRouter()
 	router.Use(middleware.Logger)
-	router.Mount("/", hr)
+	router.NotFound(app.makeFrontendRouter().ServeHTTP)
+
+	// iml := fasthttputil.NewInmemoryListener()
 
 	// Create a custom handler function for CONNECT requests
 	connectHandler := func(w http.ResponseWriter, r *http.Request) {
@@ -260,13 +247,18 @@ func main() {
 
 	httpServer := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Redirect to HTTPS:
-			target := "https://" + r.Host + r.URL.Path
-			if len(r.URL.RawQuery) > 0 {
-				target += "?" + r.URL.RawQuery
+			if r.Method == http.MethodConnect {
+				log.Printf("Handling CONNECT request for %s\n", r.Host)
+				connectHandler(w, r)
+			} else {
+				// Redirect to HTTPS:
+				target := "https://" + r.Host + r.URL.Path
+				if len(r.URL.RawQuery) > 0 {
+					target += "?" + r.URL.RawQuery
+				}
+				log.Printf("Redirecting to %s\n", target)
+				http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 			}
-			log.Printf("Redirecting to %s\n", target)
-			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 		}),
 	}
 	httpsServer := &http.Server{
@@ -280,11 +272,6 @@ func main() {
 				router.ServeHTTP(w, r)
 			}
 		}),
-		// Force HTTP/1.1 to enable hijacking
-		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true, // Disabling certificate verification, use with caution.
-		},
 	}
 
 	log.Printf("Listening on port %s\n", port)
