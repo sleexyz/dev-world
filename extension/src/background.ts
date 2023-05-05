@@ -5,7 +5,6 @@ class Extension {
     await Promise.all([
       chrome.runtime.sendMessage(PACMAN_EXTENSION_ID, {
         setProxyRequest: {
-          protocol: "http",
           host: "dev",
           type: "PROXY",
           destination: "localhost:12345",
@@ -13,25 +12,8 @@ class Extension {
       }),
       chrome.runtime.sendMessage(PACMAN_EXTENSION_ID, {
         setProxyRequest: {
-          protocol: "https",
-          host: "dev",
-          type: "HTTPS",
-          destination: "localhost:12345",
-        },
-      }),
-      chrome.runtime.sendMessage(PACMAN_EXTENSION_ID, {
-        setProxyRequest: {
-          protocol: "http",
           host: "d",
           type: "PROXY",
-          destination: "localhost:12345",
-        },
-      }),
-      chrome.runtime.sendMessage(PACMAN_EXTENSION_ID, {
-        setProxyRequest: {
-          protocol: "https",
-          host: "d",
-          type: "HTTPS",
           destination: "localhost:12345",
         },
       }),

@@ -1,12 +1,11 @@
 interface ProxyEntry {
-  protocol: string;
   host: string;
   type: string;
   destination: string;
   extensionId: string;
 }
+
 interface SetProxyRequest {
-  protocol: string;
   host: string;
   type: string;
   destination: string;
@@ -21,8 +20,7 @@ class ProxyManager {
     return `
 function FindProxyForURL(url, host) {
   const data = ${JSON.stringify(this.entries, null, 2)};
-  const protocol = url.substring(0, url.indexOf(':'));
-  let entry = data[protocol + '://' + host];
+  let entry = data[host];
   if (entry) {
     return entry.type + ' ' + entry.destination;
   }
@@ -32,8 +30,7 @@ function FindProxyForURL(url, host) {
   }
 
   addEntry(entry: ProxyEntry) {
-    const key = entry.protocol + "://" + entry.host;
-    this.entries[key] = entry;
+    this.entries[entry.host] = entry;
   }
 
   applySettings() {
@@ -76,12 +73,11 @@ function FindProxyForURL(url, host) {
   }
 
   async handleSetProxyRequest(
-    { protocol, host, type, destination }: SetProxyRequest,
+    { host, type, destination }: SetProxyRequest,
     extensionId: string
   ): Promise<SetProxyResponse> {
     try {
       this.addEntry({
-        protocol,
         host,
         type,
         destination,
