@@ -13,10 +13,15 @@ import (
 	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/sleexyz/dev-world/pkg/workspace"
 	"github.com/soheilhy/cmux"
+)
+
+const (
+	yellow = "\033[33m"
+	green  = "\033[32m"
+	reset  = "\033[0m"
 )
 
 var (
@@ -130,6 +135,27 @@ func (a *App) RedirectToWorkspace(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ws/?folder="+path, http.StatusTemporaryRedirect)
 }
 
+func LoggerMiddleware(category string) func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			methodString := r.Method
+			if r.Method == http.MethodConnect {
+				methodString = green + "CONNECT" + reset
+			}
+			log.Printf(
+				"[%s%6s%s] (%s) %s %s\n",
+				yellow,
+				category,
+				reset,
+				r.Proto,
+				methodString,
+				r.RequestURI,
+			)
+			h.ServeHTTP(w, r)
+		})
+	}
+}
+
 func (app *App) makeFrontendRouter() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/workspace", app.RedirectToWorkspace)
@@ -140,15 +166,14 @@ func (app *App) makeFrontendRouter() chi.Router {
 	return r
 }
 
+func (app *App) Close() {
+	app.ws.Close()
+}
+
 func main() {
 	flag.Parse()
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	go func() {
-		<-c
-		log.Println("Exiting 1...")
-		os.Exit(0)
-	}()
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "12345"
@@ -156,9 +181,7 @@ func main() {
 
 	app := createApp()
 
-	router := chi.NewRouter()
-	router.Use(middleware.Logger)
-	router.NotFound(app.makeFrontendRouter().ServeHTTP)
+	router := app.makeFrontendRouter()
 
 	// iml := fasthttputil.NewInmemoryListener()
 
@@ -212,9 +235,8 @@ func main() {
 	httpL := m.Match(cmux.Any())
 
 	httpServer := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Handler: LoggerMiddleware("http")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodConnect {
-				log.Printf("Handling CONNECT request for %s\n", r.Host)
 				connectHandler(w, r)
 			} else {
 				// Redirect to HTTPS:
@@ -225,18 +247,10 @@ func main() {
 				log.Printf("Redirecting to %s\n", target)
 				http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 			}
-		}),
+		})),
 	}
 	httpsServer := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodConnect {
-				log.Printf("Handling CONNECT request for %s\n", r.Host)
-				connectHandler(w, r)
-			} else {
-				log.Printf("Handling %s request for %s\n", r.Method, r.URL.Path)
-				router.ServeHTTP(w, r)
-			}
-		}),
+		Handler: LoggerMiddleware("https")(router),
 	}
 
 	log.Printf("Listening on port %s\n", port)
@@ -251,6 +265,12 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+	}()
+	go func() {
+		<-c
+		log.Println("Exiting 1...")
+		app.Close()
+		os.Exit(0)
 	}()
 	m.Serve()
 }
