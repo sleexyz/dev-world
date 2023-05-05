@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -17,12 +16,7 @@ import (
 	"time"
 )
 
-var (
-	localCodeServerFlag = flag.Bool("local-code-server", false, "use local code-server instead of system code-server")
-)
-
 type Workspace struct {
-	Path         string
 	Socket       string
 	VscodeSocket string
 	Process      *os.Process
@@ -96,10 +90,6 @@ func (workspace *Workspace) Close() {
 	os.Remove(workspace.Socket)
 }
 
-func CreateKeyFromPath(path string) string {
-	return base64.StdEncoding.EncodeToString([]byte(path))
-}
-
 func DecodePathFromKey(key string) (string, error) {
 	decoded, err := base64.StdEncoding.DecodeString(key)
 	if err != nil {
@@ -144,43 +134,30 @@ func (w *Workspace) OpenFile(file string, line int, column int) {
 	defer resp.Body.Close()
 }
 
-func CreateWorkspace(ctx context.Context, path string) *Workspace {
-	codeServerSocketPath := GetCodeServerSocketPath(path)
+func CreateWorkspace() *Workspace {
+	codeServerSocketPath := GetCodeServerSocketPath()
 
 	_, err := os.Create(codeServerSocketPath)
 	if err != nil {
 		log.Fatalln("Error creating socket:", err)
 	}
 
-	var cmd *exec.Cmd
-	if *localCodeServerFlag {
-		cmd = exec.Command(
-			"node",
-			os.Getenv("HOME")+"/code-server/release/out/node/entry.js",
-			fmt.Sprintf("--socket=%s", codeServerSocketPath),
-			path,
-		)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-	} else {
-		cmd = exec.Command("code-server", "--socket", codeServerSocketPath, path)
-		// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-	}
+	cmd := exec.Command("code-server", "--socket", codeServerSocketPath)
+	// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 
 	if err = cmd.Start(); err != nil {
 		log.Fatalf("Failed to start child process: %v", err)
 	}
 
-	err = WaitForSocket(ctx, codeServerSocketPath)
+	err = WaitForSocket(context.Background(), codeServerSocketPath)
 	if err != nil {
 		log.Printf("Failed health check for child process: %v", err)
 	}
 
 	// Do not block on vscode socket creation
 	w := &Workspace{
-		Path:    path,
 		Socket:  codeServerSocketPath,
 		Process: cmd.Process,
 	}
@@ -215,9 +192,8 @@ func WaitForVscodeSocket(pid int) chan string {
 	return doneChan
 }
 
-func GetCodeServerSocketPath(folder string) string {
-	key := CreateKeyFromPath(folder)
-	return fmt.Sprintf("%scode-server-%s.sock", os.TempDir(), key)
+func GetCodeServerSocketPath() string {
+	return fmt.Sprintf("%scode-server.sock", os.TempDir())
 }
 
 // Reads the vscode-ipc socket path from $TMPDIR/vscode-ipc

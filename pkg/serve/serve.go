@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
-	"github.com/sleexyz/dev-world/pkg/sitter"
+	"github.com/sleexyz/dev-world/pkg/workspace"
 	"github.com/soheilhy/cmux"
 )
 
@@ -31,25 +31,20 @@ type Event struct {
 }
 
 type App struct {
-	sitter      *sitter.Sitter
+	ws          *workspace.Workspace
 	subscribers map[string]chan Event
 }
 
 func createApp() *App {
 	return &App{
-		sitter:      sitter.LoadSitter(),
+		ws:          workspace.CreateWorkspace(),
 		subscribers: make(map[string]chan Event),
 	}
 }
 
 func (a *App) openFile(file string, line int, column int) {
 	// Shell out to code-server
-	ws := a.sitter.GetWorkspaceForFile(file)
-	if ws == nil {
-		log.Printf("No workspace found for file %s\n", file)
-		return
-	}
-	ws.OpenFile(file, line, column)
+	a.ws.OpenFile(file, line, column)
 
 	// Broadcast to extension
 	for _, sub := range a.subscribers {
@@ -109,7 +104,7 @@ func (a *App) HandleOpenFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) ProxyToCodeServer(w http.ResponseWriter, r *http.Request) {
-	a.sitter.ProxyHandler(w, r)
+	a.ws.ReverseProxy(w, r)
 }
 
 func (a *App) ProxyToFrontend(w http.ResponseWriter, r *http.Request) {
@@ -127,33 +122,6 @@ type GetWorkspacesResponse struct {
 	Workspaces []string `json:"workspaces"`
 }
 
-func (a *App) HandleGetWorkspaces(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	ws := a.sitter.GetWorkspacePaths()
-	resp := &GetWorkspacesResponse{
-		Workspaces: ws,
-	}
-	err := json.NewEncoder(w).Encode(resp)
-	if err != nil {
-		log.Printf("Error encoding response: %s\n", err)
-	}
-}
-
-func (a *App) HandleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Query().Get("folder")
-	if path == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	err := a.sitter.DeleteWorkspace(path)
-	if err != nil {
-		log.Printf("Error deleting workspace: %s\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	a.HandleGetWorkspaces(w, r)
-}
-
 func (a *App) RedirectToWorkspace(w http.ResponseWriter, r *http.Request) {
 	home := os.Getenv("HOME")
 	r.URL.Query().Get("alias")
@@ -165,9 +133,7 @@ func (a *App) RedirectToWorkspace(w http.ResponseWriter, r *http.Request) {
 func (app *App) makeFrontendRouter() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/workspace", app.RedirectToWorkspace)
-	r.Get("/api/workspaces", app.HandleGetWorkspaces)
 	r.Post("/api/open-file", app.HandleOpenFile)
-	r.Delete("/api/workspace", app.HandleDeleteWorkspace)
 	r.Get("/api/listen-open-file", app.ListenOpenFileSSE)
 	r.Mount("/ws", http.HandlerFunc(app.ProxyToCodeServer))
 	r.NotFound(app.ProxyToFrontend)
@@ -267,8 +233,7 @@ func main() {
 				log.Printf("Handling CONNECT request for %s\n", r.Host)
 				connectHandler(w, r)
 			} else {
-				cookie, _ := r.Cookie(sitter.WORKSPACE_PATH_COOKIE)
-				log.Printf("Handling %s request for %s%s?%s\n (Cookie: %s)", r.Method, r.Host, r.URL.Path, r.URL.RawQuery, cookie)
+				log.Printf("Handling %s request for %s\n", r.Method, r.URL.Path)
 				router.ServeHTTP(w, r)
 			}
 		}),
