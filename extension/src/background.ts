@@ -1,4 +1,4 @@
-const PACMAN_EXTENSION_ID = "jbclhgpgaijegjnfhbpidgaooihpcphd";
+const PACMAN_EXTENSION_ID = "jeifocpihhhiljnipffnppembibdlhai";
 
 class Extension {
   async registerExtension() {

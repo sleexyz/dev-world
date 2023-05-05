@@ -5,6 +5,7 @@
   "manifest_version": 3,
   "permissions": ["proxy", "storage"],
   "action": {},
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtmEzuQLz0MEGo0adyUZB+6qIOw2Jiu9EbRQFcSck9OkPqAdij44lgCXL29Qy2gq67OW+QweWlrKDAH1C2GCJSPUYQPByO/fj+X40zVm4d/m9iC47wGSRnOtKCUstBCyQrGyR0y77CfSpedwqr4vMn6NCjvtvx2hkRkcxDZvAcx93EIyQ0zGf4yPSNIQbnOAtp20ngXIM+V2VQSFPXv1OvgUdbjn+u8WRQeUVm5wV+9NacBVm15pA4ZXOISaqtyRvE724uhzjAcSgma3IL/Y1iK85ZZCkDR+w4n8rSx7lRuhl8PSWvaSkx/yNCSUwJ1CgY5Ph7zPtt7bh89qGf0SUpQIDAQAB",
   "background": {
     "service_worker": "src/background.ts",
     "type": "module"
