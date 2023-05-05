@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useMatch } from "react-router-dom";
 
 export function EditorContainer() {
