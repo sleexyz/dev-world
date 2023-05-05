@@ -21,6 +21,11 @@ import (
 	"github.com/soheilhy/cmux"
 )
 
+var (
+	certFileFlag = flag.String("cert-file", "cert.pem", "path to cert file")
+	keyFileFlag = flag.String("key-file", "key.pem", "path to key file")
+)
+
 type Event struct {
 	File   string `json:"file"`
 	Line   int    `json:"line"`
@@ -156,7 +161,7 @@ func (a *App) RedirectToWorkspace(w http.ResponseWriter, r *http.Request) {
 	r.URL.Query().Get("alias")
 	path := filepath.Join(home, r.URL.Query().Get("alias"))
 	log.Printf("Redirecting to %s\n", path)
-	http.Redirect(w, r, "https://dev.localhost:12345?folder="+path, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "https://localhost:12345?folder="+path, http.StatusTemporaryRedirect)
 }
 
 func (app *App) makeCodeServerRouter() chi.Router {
@@ -290,7 +295,7 @@ func main() {
 		}
 	}()
 	go func() {
-		err := httpsServer.ServeTLS(httpsL, "localhost+4.pem", "localhost+4-key.pem")
+		err := httpsServer.ServeTLS(httpsL, *certFileFlag, *keyFileFlag)
 		if err != nil {
 			log.Fatal(err)
 		}
