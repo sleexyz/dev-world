@@ -1,0 +1,67 @@
+version: '3'
+
+tasks:
+  build:
+    cmds:
+      - task: build-server
+      - task: build-client
+      - task: build-pacman
+      - task: build-extension
+  
+  start:
+    deps: [start-server, start-client]
+
+  start-client:
+    dir: 'client'
+    deps: [build-client]
+    cmds:
+      - npm run dev
+
+  start-server:
+    deps: [build-server]
+    cmds:
+      - ./bin/serve
+
+  build-client:
+    dir: 'client'
+    sources: 
+      - '**/*.ts'
+    cmds:
+      - npm install 
+      - npm run build
+    generates:
+      - dist/index.html
+  
+  build-server:
+    sources: 
+      - '**/*.go'
+    cmds:
+      - ./build.sh
+    generates:
+      - bin/serve
+
+  build-pacman:
+    dir: 'pacman'
+    sources:
+      - '**/*.ts'
+      - '**/*.json'
+    cmds:
+      - npm install
+      - npm run build
+      - rsync -avz --delete dist/ ~/downloads/pacman
+    generates:
+      - dist/manifest.json
+
+  build-extension:
+    dir: 'extension'
+    sources:
+      - '**/*.ts'
+      - '**/*.json'
+    cmds:
+      - npm install
+      - npm run build 
+      - rsync -avz --delete dist/ ~/downloads/dev-world
+    generates:
+      - dist/manifest.json
+
+interval: 500ms
