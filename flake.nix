@@ -15,6 +15,7 @@
               go
               entr
               nodejs-16_x
+              go-task
             ];
           };
         }
