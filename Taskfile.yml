@@ -8,20 +8,6 @@ tasks:
       - task: build-pacman
       - task: build-extension
   
-  start:
-    deps: [start-server, start-client]
-
-  start-client:
-    dir: 'client'
-    deps: [build-client]
-    cmds:
-      - npm run dev
-
-  start-server:
-    deps: [build-server]
-    cmds:
-      - ./bin/serve
-
   build-client:
     dir: 'client'
     sources: 
@@ -63,5 +49,3 @@ tasks:
       - rsync -avz --delete dist/ ~/downloads/dev-world
     generates:
       - dist/manifest.json
-
-interval: 500ms

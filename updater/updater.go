@@ -103,7 +103,7 @@ func runExtensionUpdater() {
 			"zsh",
 			"-c",
 			"-l",
-			"(cd extension; cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -r -s 'npm run build')",
+			"cat <(git ls-files extension) <(git ls-files --others --exclude-standard extension) | entr -n -d -r -s 'task build-extension'",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -118,7 +118,7 @@ func runPacmanExtensionUpdater() {
 			"zsh",
 			"-c",
 			"-l",
-			"(cd pacman; cat <(git ls-files) <(git ls-files --others --exclude-standard) | entr -n -d -r -s 'npm run build')",
+			"(cat <(git ls-files pacman) <(git ls-files --others --exclude-standard pacman) | entr -n -d -r -s 'task build-pacman')",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -134,7 +134,7 @@ func runUpdater(shouldUpdateChan chan struct{}) {
 			"zsh",
 			"-c",
 			"-l",
-			"cat <(git ls-files) <(git ls-files --others --exclude-standard) | grep pkg | entr -n -d -p -r -s -z './build.sh'",
+			"cat <(git ls-files) <(git ls-files --others --exclude-standard) | grep pkg | entr -n -d -p -r -s -c './build.sh'",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
