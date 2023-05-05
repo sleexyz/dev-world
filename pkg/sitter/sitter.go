@@ -101,8 +101,8 @@ func (s *Sitter) GetOrCreateWorkspace(w http.ResponseWriter, r *http.Request) (*
 			Value:    path,
 			Path:     "/",
 			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
+			SameSite: http.SameSiteStrictMode,
+			Secure:   false,
 		})
 	}
 

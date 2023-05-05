@@ -41,6 +41,7 @@ func (workspace *Workspace) ReverseProxy(w http.ResponseWriter, r *http.Request)
 		Director: func(req *http.Request) {
 			req.URL.Scheme = "http"
 			req.URL.Host = r.Host
+			req.URL.Path = regexp.MustCompile(`^/ws/`).ReplaceAllString(r.URL.Path, "/")
 		},
 		Transport: transport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
