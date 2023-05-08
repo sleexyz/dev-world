@@ -23,7 +23,7 @@ class Extension {
   listen() {
     runForever({ maxRunsPerSec: 3 }, async () => {
       const eventSource = new EventSource(
-        "https://localhost:12345/api/listen-open-file"
+        "https://d/api/listen-open-file"
       );
       eventSource.addEventListener("open", onOpen) 
       eventSource.addEventListener("message", onMessage);

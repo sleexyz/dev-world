@@ -103,7 +103,7 @@ func runExtensionUpdater() {
 			"zsh",
 			"-c",
 			"-l",
-			"cat <(git ls-files extension) <(git ls-files --others --exclude-standard extension) | entr -n -d -r -s 'task build-extension'",
+			"cat <(git ls-files extension) <(git ls-files --others --exclude-standard extension) | entr -n -d -r -s 'task --force build-extension'",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -118,7 +118,7 @@ func runPacmanExtensionUpdater() {
 			"zsh",
 			"-c",
 			"-l",
-			"(cat <(git ls-files pacman) <(git ls-files --others --exclude-standard pacman) | entr -n -d -r -s 'task build-pacman')",
+			"(cat <(git ls-files pacman) <(git ls-files --others --exclude-standard pacman) | entr -n -d -r -s 'task --force build-pacman')",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
