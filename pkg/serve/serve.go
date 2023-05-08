@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sleexyz/dev-world/pkg/workspace"
 	"github.com/soheilhy/cmux"
+	"google.golang.org/grpc/test/bufconn"
 )
 
 const (
@@ -170,6 +172,18 @@ func (app *App) Close() {
 	app.ws.Close()
 }
 
+func Tunnel(from, to io.ReadWriteCloser) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("recovered while tunneling")
+		}
+	}()
+
+	io.Copy(from, to)
+	to.Close()
+	from.Close()
+}
+
 func main() {
 	flag.Parse()
 	c := make(chan os.Signal, 1)
@@ -183,12 +197,36 @@ func main() {
 
 	router := app.makeFrontendRouter()
 
-	// iml := fasthttputil.NewInmemoryListener()
+	loopback := bufconn.Listen(1024)
+
+	handleTLS := func(clientConn net.Conn) {
+		tlsconn, ok := clientConn.(*tls.Conn)
+		if ok {
+
+			err := tlsconn.Handshake()
+			if err != nil {
+				log.Printf("error in tls.Handshake: %s", err)
+				clientConn.Close()
+				return
+			}
+
+			backendConn, err := loopback.Dial()
+			if err != nil {
+				log.Printf("error in net.Dial: %s", err)
+				clientConn.Close()
+				return
+			}
+
+			go Tunnel(clientConn, backendConn)
+			go Tunnel(backendConn, clientConn)
+		}
+	}
 
 	// Create a custom handler function for CONNECT requests
 	connectHandler := func(w http.ResponseWriter, r *http.Request) {
 		// Establish a plain-text TCP connection to the target server
-		conn, err := net.Dial("tcp", "localhost:12345")
+		// conn, err := net.Dial("tcp", "localhost:12345")
+		conn, err := loopback.DialContext(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
@@ -207,39 +245,21 @@ func main() {
 			return
 		}
 		// Copy data bidirectionally between the client and the target server
-		go func() {
-			defer conn.Close()
-			defer clientConn.Close()
-			_, err := io.Copy(conn, clientConn)
-			if err != nil {
-				log.Printf("Error copying to client: %s\n", err)
-			}
-		}()
-		go func() {
-			defer conn.Close()
-			defer clientConn.Close()
-			_, err := io.Copy(clientConn, conn)
-			if err != nil {
-				log.Printf("Error copying to server: %s\n", err)
-			}
-		}()
+		go Tunnel(conn, clientConn)
+		go Tunnel(clientConn, conn)
 	}
 
-	l, err := net.Listen("tcp", ":"+port)
-	if err != nil {
-		log.Fatal(err)
-	}
+	go func() {
+		l, err := net.Listen("tcp", ":"+port)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	m := cmux.New(l)
-	httpsL := m.Match(cmux.TLS())
-	httpL := m.Match(cmux.Any())
-
-	httpServer := &http.Server{
-		Handler: LoggerMiddleware("http")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Listening on :%s\n", port)
+		http.Serve(l, LoggerMiddleware("tcp")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodConnect {
 				connectHandler(w, r)
 			} else {
-				// Redirect to HTTPS:
 				target := "https://" + r.Host + r.URL.Path
 				if len(r.URL.RawQuery) > 0 {
 					target += "?" + r.URL.RawQuery
@@ -247,24 +267,39 @@ func main() {
 				log.Printf("Redirecting to %s\n", target)
 				http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 			}
-		})),
-	}
-	httpsServer := &http.Server{
-		Handler: LoggerMiddleware("https")(router),
-	}
-
-	log.Printf("Listening on port %s\n", port)
-	go func() {
-		err := httpServer.Serve(httpL)
-		if err != nil {
-			log.Fatal(err)
-		}
+		})))
 	}()
+
 	go func() {
-		err := httpsServer.ServeTLS(httpsL, *certFileFlag, *keyFileFlag)
-		if err != nil {
-			log.Fatal(err)
-		}
+		m := cmux.New(loopback)
+		httpsL := m.Match(cmux.TLS())
+		httpL := m.Match(cmux.Any())
+
+		go func() {
+			err := http.Serve(httpL, LoggerMiddleware("memory")(router))
+			if err != nil {
+				log.Fatal(err)
+			}
+		}()
+		go func() {
+			cert, err := tls.LoadX509KeyPair(*certFileFlag, *keyFileFlag)
+			if err != nil {
+				log.Fatalf("error in tls.LoadX509KeyPair: %s", err)
+			}
+
+			listener := tls.NewListener(httpsL, &tls.Config{Certificates: []tls.Certificate{cert}, InsecureSkipVerify: true})
+
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					log.Printf("error in listener.Accept: %s", err)
+					break
+				}
+
+				go handleTLS(conn)
+			}
+		}()
+		m.Serve()
 	}()
 	go func() {
 		<-c
@@ -272,5 +307,5 @@ func main() {
 		app.Close()
 		os.Exit(0)
 	}()
-	m.Serve()
+	<-make(chan struct{})
 }
