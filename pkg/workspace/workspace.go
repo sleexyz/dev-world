@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"syscall"
 	"time"
 )
 
@@ -144,9 +143,9 @@ func CreateWorkspace() *Workspace {
 	}
 
 	cmd := exec.Command("code-server", "--socket", codeServerSocketPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Prevent child process from being killed when parent process exits
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stdin
 
 	if err = cmd.Start(); err != nil {
 		log.Fatalf("Failed to start child process: %v", err)

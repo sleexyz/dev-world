@@ -88,7 +88,7 @@ func runServe(state *State) {
 		}()
 		select {
 		case <-state.shouldUpdateChan:
-			cmd.Process.Kill()
+			cmd.Process.Signal(os.Interrupt)
 			logger.Println("Process killed by updater")
 		case <-doneChan:
 			logger.Println("Process exited")
@@ -134,7 +134,8 @@ func runUpdater(shouldUpdateChan chan struct{}) {
 			"zsh",
 			"-c",
 			"-l",
-			"cat <(git ls-files) <(git ls-files --others --exclude-standard) | grep pkg | entr -n -d -p -r -s -c './build.sh'",
+			// NOTE: We need the -z flag to exit, which sends a binary signal to the updater process.
+			"cat <(git ls-files) <(git ls-files --others --exclude-standard) | grep pkg | entr -n -d -p -r -s -c -z './build.sh'",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
