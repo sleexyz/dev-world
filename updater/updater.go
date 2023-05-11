@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
+	"sync"
 	"time"
 )
 
@@ -22,114 +24,174 @@ func (i *arrayFlags) Set(value string) error {
 
 var serveFlag arrayFlags
 
-var logger = log.New(os.Stdout, "", log.LstdFlags)
-
-type State struct {
+type Updater struct {
+	exitChan         chan struct{}
 	shouldUpdateChan chan struct{}
+	logger           *log.Logger
+	cmds             map[*exec.Cmd]struct{}
+	cmdMu            sync.Mutex
 }
 
 func main() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
 	flag.Var(&serveFlag, "serve-flag", "flag to pass to serve")
 	flag.Parse()
 
-	freeUpPort(12345)
-	freeUpPort(12344)
+	logger := log.New(os.Stdout, "", log.LstdFlags)
 	logger.SetPrefix("\033[33m[updater] \033[0m") // yellow
-	state := &State{
+
+	u := &Updater{
 		shouldUpdateChan: make(chan struct{}),
+		exitChan:         make(chan struct{}),
+		logger:           logger,
+		cmds:             make(map[*exec.Cmd]struct{}),
+		cmdMu:            sync.Mutex{},
 	}
-	go func() {
-		runClientDevServer(state)
-	}()
-	go func() {
-		runServe(state)
-	}()
-	go func() {
-		runUpdater(state.shouldUpdateChan)
-	}()
-	go func() {
-		runExtensionUpdater()
-	}()
-	go func() {
-		runPacmanExtensionUpdater()
-	}()
-	<-make(chan struct{})
+
+	u.freeUpPort(12345)
+	u.freeUpPort(12344)
+
+	go u.runClientDevServer()
+	go u.runServe()
+	go u.runUpdater()
+	go u.runExtensionUpdater()
+	go u.runPacmanExtensionUpdater()
+
+	select {
+	case <-c:
+		break
+	case <-u.exitChan:
+		break
+	}
+	u.logger.Println("Shutting down...")
+	u.cleanUp()
+	os.Exit(0)
 }
 
-func runClientDevServer(state *State) {
-	loop(func() {
+func (u *Updater) cleanUp() {
+	for cmd := range u.cmds {
+		log.Printf("Killing process %d", cmd.Process.Pid)
+		cmd.Process.Kill()
+	}
+}
+
+func (u *Updater) runClientDevServer() {
+	u.loop(func() {
 		cmd := exec.Command("sh", "-c", "cd client && npm run dev")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		logger.Println("Starting client dev server.")
+		u.logger.Println("Starting client dev server.")
 		err := cmd.Start()
 		if err != nil {
-			logger.Panicf("Failed to start client dev server: %s", err)
+			u.logger.Panicf("Failed to start client dev server: %s", err)
 		}
+		u.cmdMu.Lock()
+		u.cmds[cmd] = struct{}{}
+		u.cmdMu.Unlock()
+
+		defer func() {
+			u.cmdMu.Lock()
+			delete(u.cmds, cmd)
+			u.cmdMu.Unlock()
+		}()
 		cmd.Wait()
 	})
 }
 
 // Continuously run the program.
-func runServe(state *State) {
-	loop(func() {
+func (u *Updater) runServe() {
+	u.loop(func() {
 		cmd := exec.Command("bin/serve", serveFlag...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		logger.Println("Starting process.")
+		u.logger.Println("Starting process.")
 		err := cmd.Start()
 		if err != nil {
-			logger.Panicf("Failed to start process: %s", err)
+			u.logger.Panicf("Failed to start process: %s", err)
 		}
+		u.cmdMu.Lock()
+		u.cmds[cmd] = struct{}{}
+		u.cmdMu.Unlock()
+		defer func() {
+			u.cmdMu.Lock()
+			delete(u.cmds, cmd)
+			u.cmdMu.Unlock()
+		}()
 
 		doneChan := make(chan error)
 		go func() {
 			doneChan <- cmd.Wait()
 		}()
 		select {
-		case <-state.shouldUpdateChan:
+		case <-u.shouldUpdateChan:
 			cmd.Process.Signal(os.Interrupt)
-			logger.Println("Process killed by updater")
+			u.logger.Println("Process killed by updater")
 		case <-doneChan:
-			logger.Println("Process exited")
+			u.logger.Println("Process exited")
 		}
 	})
 }
 
-func runExtensionUpdater() {
-	loop(func() {
-		logger.Println("Running extension updater")
+func (u *Updater) runExtensionUpdater() {
+	u.loop(func() {
+		u.logger.Println("Running extension updater")
 		cmd := exec.Command(
 			"zsh",
 			"-c",
 			"-l",
-			"cat <(git ls-files extension) <(git ls-files --others --exclude-standard extension) | entr -n -d -r -s 'task --force build-extension'",
+			"cat <(git ls-files extension) <(git ls-files --others --exclude-standard extension) | entr -n -d -r -s 'task build-extension'",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		cmd.Run()
+		err := cmd.Start()
+		if err != nil {
+			u.logger.Panicf("Failed to start process: %s", err)
+		}
+		u.cmdMu.Lock()
+		u.cmds[cmd] = struct{}{}
+		u.cmdMu.Unlock()
+		defer func() {
+			u.cmdMu.Lock()
+			delete(u.cmds, cmd)
+			u.cmdMu.Unlock()
+		}()
+		cmd.Wait()
 	})
 }
 
-func runPacmanExtensionUpdater() {
-	loop(func() {
-		logger.Println("Running PACman extension updater")
+func (u *Updater) runPacmanExtensionUpdater() {
+	u.loop(func() {
+		u.logger.Println("Running PACman extension updater")
 		cmd := exec.Command(
 			"zsh",
 			"-c",
 			"-l",
-			"(cat <(git ls-files pacman) <(git ls-files --others --exclude-standard pacman) | entr -n -d -r -s 'task --force build-pacman')",
+			"(cat <(git ls-files pacman) <(git ls-files --others --exclude-standard pacman) | entr -n -d -r -s 'task build-pacman')",
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		cmd.Run()
+		err := cmd.Start()
+		if err != nil {
+			u.logger.Panicf("Failed to start process: %s", err)
+		}
+		u.cmdMu.Lock()
+		u.cmds[cmd] = struct{}{}
+		u.cmdMu.Unlock()
+		defer func() {
+			u.cmdMu.Lock()
+			delete(u.cmds, cmd)
+			u.cmdMu.Unlock()
+		}()
+		cmd.Wait()
 	})
 }
 
 // Updater sends signals when the program rebuilds and should be restarted
-func runUpdater(shouldUpdateChan chan struct{}) {
-	loop(func() {
-		logger.Println("Running updater")
+func (u *Updater) runUpdater() {
+	u.loop(func() {
+		u.logger.Println("Running updater")
 		cmd := exec.Command(
 			"zsh",
 			"-c",
@@ -139,43 +201,58 @@ func runUpdater(shouldUpdateChan chan struct{}) {
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		err := cmd.Run()
+		err := cmd.Start()
+		if err != nil {
+			u.logger.Panicf("Failed to start process: %s", err)
+		}
+		u.cmdMu.Lock()
+		u.cmds[cmd] = struct{}{}
+		u.cmdMu.Unlock()
+		defer func() {
+			u.cmdMu.Lock()
+			delete(u.cmds, cmd)
+			u.cmdMu.Unlock()
+		}()
+		cmd.Wait()
 		// Don't kill the process if build command exited with a non-zero exit code
 		if err != nil {
-			logger.Printf("Failed to build`: %s\n", err)
+			u.logger.Printf("Failed to build`: %s\n", err)
 			return
 		}
-		shouldUpdateChan <- struct{}{}
+		u.shouldUpdateChan <- struct{}{}
 	})
 }
 
 // If a process is running on the given port, kill it.
-func freeUpPort(port int) {
+func (u *Updater) freeUpPort(port int) {
 	cmd := exec.Command("sh", "-c", "lsof -sTCP:LISTEN -i:"+fmt.Sprintf("%d", port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
 	if err == nil {
-		logger.Printf("Port %d is already in use", port)
+		u.logger.Printf("Port %d is already in use", port)
 		cmd := exec.Command("sh", "-c", "lsof -sTCP:LISTEN -i:"+fmt.Sprintf("%d", port)+" | awk 'NR==2{print $2}' | xargs kill")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err = cmd.Run()
 		if err != nil {
-			logger.Fatalf("Failed to kill process listening on port %d: %s", port, err)
+			u.logger.Printf("Failed to kill process listening on port %d: %s", port, err)
+			u.exitChan <- struct{}{}
 		}
 	}
 }
 
-func loop(fn func()) {
+func (u *Updater) loop(fn func()) {
 	lastSampleTime := time.Now()
 	runs := 0
 	for {
 		runs += 1
 		fn()
 		if runs > 3 {
-			if time.Since(lastSampleTime) < 10*time.Second {
-				logger.Fatalf("Process exited too quickly (%d runs in %s)", runs, time.Since(lastSampleTime))
+			if time.Since(lastSampleTime) < 20*time.Second {
+				u.logger.Printf("Process exited too quickly (%d runs in %s)", runs, time.Since(lastSampleTime))
+				u.exitChan <- struct{}{}
+				break
 			} else {
 				lastSampleTime = time.Now()
 				runs = 0

@@ -34,6 +34,7 @@ tasks:
       - '**/*.ts'
       - '**/*.json'
     cmds:
+      - npm install
       - npm run build
       - rsync -avz --delete dist/ ~/downloads/pacman
     generates:
@@ -46,6 +47,7 @@ tasks:
       - '**/*.ts'
       - '**/*.json'
     cmds:
+      - npm install
       - npm run build 
       - rsync -avz --delete dist/ ~/downloads/dev-world
     generates:
