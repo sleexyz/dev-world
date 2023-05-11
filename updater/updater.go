@@ -52,6 +52,7 @@ func main() {
 
 	u.freeUpPort(12345)
 	u.freeUpPort(12344)
+	u.deleteFile(os.TempDir() + "code-server.sock")
 
 	go u.runClientDevServer()
 	go u.runServe()
@@ -221,6 +222,14 @@ func (u *Updater) runUpdater() {
 		}
 		u.shouldUpdateChan <- struct{}{}
 	})
+}
+
+func (u *Updater) deleteFile(path string) {
+	u.logger.Printf("Deleting %s", path)
+	err := os.Remove(path)
+	if err != nil {
+		u.logger.Printf("Failed to delete %s: %s", path, err)
+	}
 }
 
 // If a process is running on the given port, kill it.
