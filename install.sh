@@ -20,7 +20,7 @@ plist_content=$(cat << EOF
     <string>/bin/zsh</string>
     <string>-c</string>
     <string>-l</string>
-    <string>./bin/updater</string>
+    <string>nix develop --command './bin/updater'</string>
   </array>
 
   <key>StandardErrorPath</key>
