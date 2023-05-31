@@ -160,6 +160,7 @@ func LoggerMiddleware(category string) func(h http.Handler) http.Handler {
 
 func (app *App) makeFrontendRouter() chi.Router {
 	r := chi.NewRouter()
+	r.Use(RecoverMiddleware)
 	r.Get("/workspace", app.RedirectToWorkspace)
 	r.Post("/api/open-file", app.HandleOpenFile)
 	r.Get("/api/listen-open-file", app.ListenOpenFileSSE)
