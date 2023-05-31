@@ -28,7 +28,7 @@ const router = createBrowserRouter([
 function Container() {
   const location = useLocation();
   useEffect(() => {
-    document.title = `${window.location.host}${window.location.pathname}`;
+    document.title = `~${window.location.pathname}`;
   }, [location]);
   return <Outlet/>;
 }
